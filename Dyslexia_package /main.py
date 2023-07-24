@@ -6,7 +6,7 @@ import json
 
 from d_package.models.ConvLSTM import ConvLstmestimator, tune_model
 from d_package.data.dyslexia_data import DyslexiaVizualization
-from d_package.common.metrics import printing_results, store_results
+from d_package.common.metrics import store_results, counting, printing_results
 from d_package.common.utils import dict_with_results
 
 from sklearn.model_selection import train_test_split
@@ -89,8 +89,8 @@ if __name__ == "__main__":
         sheet_names = [0,1,2]
 
 
-    dd = DyslexiaVizualization(dataset_name=dataset_name)
-    X, y = dd.get_datas(type=type, sheet_name=sheet_names)
+    dd = DyslexiaVizualization(dataset_name=dataset_name, sheet_name=sheet_names)
+    X, y = dd.get_datas(type=type)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, 
                                                     stratify=y, random_state=SEED_CONSTANT, shuffle=True)
     print("Train and test shapes: \n",
@@ -120,6 +120,7 @@ if __name__ == "__main__":
                 results = store_results(y_test, model.prediction(X_test), metrics, results.copy())
             with open("Results/best_model_results.json", "w") as outfile:
                 json.dump(results, outfile)
+            counting(results)
         elif run == 2:
             pass
         elif run == 3:

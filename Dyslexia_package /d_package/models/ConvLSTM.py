@@ -3,13 +3,16 @@ from tensorflow import keras
 from keras.layers import *
 from keras.models import Sequential
 from keras.callbacks import EarlyStopping
+import keras_tuner as kt
+from keras_tuner import Objective
 from keras_tuner import BayesianOptimization, HyperModel
+import tensorflow as tf
 
 
-from d_package.common.metrics import printing_results
+from Dyslexia_package.d_package.common.metrics import printing_results
 
 CLASSES_LIST = ['Dyslexia', 'Normal', 'Risk']
-#check shape size!!
+length = 150
 
 class ConvLSTMHyperModel(HyperModel):
     def build(self, hp):
@@ -24,14 +27,14 @@ class ConvLSTMHyperModel(HyperModel):
                             data_format='channels_last',
                             recurrent_dropout=0.2, 
                             return_sequences=True, 
-                            input_shape=(1209, 120, 300, 3))) 
+                            input_shape=(length, 120, 300, 3))) 
         model.add(MaxPooling3D(pool_size=(1,2,2), padding='same', data_format='channels_last'))
         model.add(Flatten())
         model.add(Dense(len(CLASSES_LIST), activation='Softmax'))
         model.compile(loss='categorical_crossentropy', 
                             optimizer=hp.Choice('optimizer',
                                                values=['adam', 'SGD', 'rmsprop']), 
-                             metrics=[keras.metrics.AUC(name='auc')])
+                             metrics=[keras.metrics.AUC(name='auc', multi_label=True)])
         return model
     
     def fit(self, hp, model, *args, **kwargs):
@@ -43,8 +46,8 @@ class ConvLSTMHyperModel(HyperModel):
                               step=2),
             epochs=hp.Int("epochs",
                           min_value=1,
-                          max_value=10000,
-                          step=5
+                          max_value=5,
+                          step=1
             ),
             **kwargs,
         )
@@ -52,13 +55,13 @@ class ConvLSTMHyperModel(HyperModel):
 
 def tune_model(X_train, y_train):
 
-    tuner = BayesianOptimization(
+    tuner = kt.BayesianOptimization(
     ConvLSTMHyperModel(),
-    objective=keras.Objective('val_auc', direction='max'),
+    objective=Objective(name='val_auc', direction='max'),
     max_trials=2,
     overwrite=True,
-    directory='Models',
-    project_name="tune_hypermodel",
+    directory="my_dir_auc",
+    project_name="tune_hypermodel_auc",
     )
 
     print(tuner.search_space_summary())
@@ -71,19 +74,19 @@ def tune_model(X_train, y_train):
     )
 
     best_hp = tuner.get_best_hyperparameters()[0]
-    model = tuner.get_best_models(num_models=1)[0]
+    model = tuner.hypermodel.build(best_hp)
 
     return best_hp.values, model.get_config()
 
 class ConvLstmestimator:
     def __init__(self, model_config, epochs, optimizer, batch_size) -> None:
-        self.model = keras.models.load_model(model_config)
+        self.model = keras.Sequential.from_config(config=model_config)
         self.epochs = epochs
         self.optimizer = optimizer
         self.batch_size = batch_size
 
     def train_model(self, X_train, y_train, val_size):
-        self.model.compile(loss='categorical_crossentropy', optimizer=self.optimizer, metrics=[keras.metrics.AUC()])
+        self.model.compile(loss='categorical_crossentropy', optimizer=self.optimizer, metrics=[keras.metrics.AUC(multi_label=True)])
         
         history = self.model.fit(X_train, y_train, epochs=self.epochs, batch_size=self.batch_size, 
                              shuffle=True, validation_split=val_size)

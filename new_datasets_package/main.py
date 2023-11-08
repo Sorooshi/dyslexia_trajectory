@@ -228,6 +228,8 @@ if __name__ == "__main__":
             #calc and save results per all folds
             final_results = resulting(metrics_results)
             final_results_tr = counting(metrics_results_tr)
+            print(final_results)
+            print(final_results_tr)
 
             saving_results(final_results, f"{epoch_num}{data_name}_full")
             saving_results(final_results_tr, f"{epoch_num}{data_name}_per_barches")

@@ -10,7 +10,7 @@ from m_package.models.Conv_LSTM_grad import build_basic, build_deep, ConvLSTM
 from m_package.data.creartion import DyslexiaVizualization
 from m_package.common.metrics_multi import metrics_per_fold, resulting
 from m_package.common.metrics_binary import metrics_per_fold_binary, resulting_binary
-from m_package.common.utils import plot_history, plot_loss, saving_results, save_model
+from m_package.common.utils import plot_history, plot_loss, saving_results, save_model, conf_matrix
 
 def args_parser(arguments):
 
@@ -32,6 +32,7 @@ if __name__ == "__main__":
              " 0 is for creating the datasets"
              " 1 is for tuning the number of epochs"
              " 2 is for training the model"
+             " 3 is for drawing metrics"
     )
 
     parser.add_argument(
@@ -176,22 +177,22 @@ if __name__ == "__main__":
         
         return loss_fn, train_metric, val_metric, model
     
-
-    gpus = tf.config.list_physical_devices('GPU')
-    if gpus:    
-        try:
-            tf.config.set_logical_device_configuration(
-                device=gpus[0],
-                logical_devices=[
-                    tf.config.LogicalDeviceConfiguration(memory_limit=32000)
-                ],
-            )
-            logical_gpus = tf.config.list_logical_devices('GPU')
-            print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
-        except RuntimeError as e:
-            print(e)
-    else:
-        print("CPU")
+    if run == 1 or run == 2: #not for dataset creation and drawing matrices
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:    
+            try:
+                tf.config.set_logical_device_configuration(
+                    device=gpus[0],
+                    logical_devices=[
+                        tf.config.LogicalDeviceConfiguration(memory_limit=32000)
+                    ],
+                )
+                logical_gpus = tf.config.list_logical_devices('GPU')
+                print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+            except RuntimeError as e:
+                print(e)
+        else:
+            print("CPU")
 
 
     if (model_name == "conv_grad" or model_name == "conv_grad_deep") and run > 0:
@@ -212,8 +213,10 @@ if __name__ == "__main__":
             valid_auc_ = conv_model.valid_auc
             train_auc_ = conv_model.training_auc
 
-            plot_history(loss, valid_auc_, train_auc_, path, f"{epoch_num}{data_name}_{model_name}_{num_classes}")
-            plot_loss(loss, path, f"{epoch_num}{data_name}_{model_name}_{num_classes}")
+            model_name_save = f"{epoch_num}{data_name}_{model_name}_{num_classes}"
+
+            plot_history(loss, valid_auc_, train_auc_, path, model_name_save)
+            plot_loss(loss, path, model_name_save)
 
             
         elif run == 2: #running the model for k times (k == 5) (done)
@@ -252,5 +255,16 @@ if __name__ == "__main__":
                 final_results = resulting_binary(metrics_results)
             print(final_results)
 
-            saving_results(final_results, f"{epoch_num}{data_name}_{model_name}_{num_classes}")
-            save_model(model_trained, f"model_{epoch_num}{data_name}_{model_name}_{num_classes}")
+            model_name_save = f"{epoch_num}{data_name}_{model_name}_{num_classes}"
+
+            saving_results(final_results, model_name_save)
+            save_model(model_trained, f"model_{model_name_save}")
+            
+            #saving conf_matrix
+            conf_matrix(f"model_{model_name_save}", test_dataset)
+        
+        elif run == 3: # print matrix for pretrained model
+            model_path = f"{epoch_num}{data_name}_{model_name}_{num_classes}" # path to the model
+            train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
+            conf_matrix(f"model_{model_path}", test_dataset)
+

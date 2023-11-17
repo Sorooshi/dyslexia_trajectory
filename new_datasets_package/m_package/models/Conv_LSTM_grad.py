@@ -48,7 +48,7 @@ def build_deep(func, shape, classes, dense_activation):
         model.add(MaxPooling3D(pool_size=(1, 1, 2), padding='same', data_format='channels_last'))
         model.add(BatchNormalization())
     
-        model.add(ConvLSTM2D(filters=128, 
+        model.add(ConvLSTM2D(filters=64, 
                                  kernel_size=(3,3), 
                                  activation=func, 
                                  data_format='channels_last',

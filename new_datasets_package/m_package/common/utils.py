@@ -3,18 +3,21 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import numpy as np
 import pickle 
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-def plot_history(history, valid, train, path, name):
+def plot_history(history, valid, train, path, name, val_history = None):
     fig, ax = plt.subplots(1,2)
     tick = max(len(history) // 5, 1)
 
     #model loss
     ax[0].xaxis.set_major_locator(ticker.MultipleLocator(tick))
-    ax[0].plot(history)
+    ax[0].plot(history, label="train loss")
+    if val_history is not None:
+        ax[0].plot(val_history, label="valid loss")
     ax[0].title.set_text('model loss')
     ax[0].set_ylabel('loss')
     ax[0].set_xlabel('epoch')
+    ax[0].legend()
 
     #auc
     ax[1].xaxis.set_major_locator(ticker.MultipleLocator(tick))
@@ -50,10 +53,10 @@ def save_model(model, name):
     model.save(f'Models/{name}.keras')
 
 
-def conf_matrix(model_name, test_dataset):
+def conf_matrix(model, test_dataset, model_name):
     fl = False
     y_pred, y_test = None, None
-    loaded_model = tf.keras.models.load_model(f"Models/{model_name}.keras") #load model with current name
+    loaded_model = model
     for x_batch_test, y_batch_test in test_dataset:
         label_proba = loaded_model(x_batch_test, training=False)
         if fl:
@@ -66,6 +69,12 @@ def conf_matrix(model_name, test_dataset):
     y_pred_lab = np.argmax(y_pred, axis=1)
 
     cm = confusion_matrix(y_test_lab, y_pred_lab)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+    disp.plot(cmap = "Oranges")
+    disp.figure_.savefig(f'Matrices_pictures/matrix_{model_name}.png')
     with open(f'Results_matrix/matrix_{model_name}.txt', 'wb') as f:
         pickle.dump(cm, f)
+
+
+
 

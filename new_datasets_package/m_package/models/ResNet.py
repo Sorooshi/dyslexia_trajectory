@@ -14,7 +14,7 @@ def resnet_block(inputs, num_filters):
     x = BatchNormalization()(x)
     shortcut = inputs
     if inputs.shape[-1] != num_filters * 4:
-        shortcut = Conv2D(num_filters * 4, (1, 1), padding='same')(shortcut)
+        shortcut = Conv3D(num_filters * 4, (1, 1, 1), padding='same')(shortcut)
         shortcut = BatchNormalization()(shortcut)
     x = Add()([x, shortcut])
     x = Activation('relu')(x)

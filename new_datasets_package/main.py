@@ -13,7 +13,7 @@ from m_package.models.ResNet import Resnet
 from m_package.data.creartion import DyslexiaVizualization
 from m_package.common.metrics_multi import metrics_per_fold, resulting
 from m_package.common.metrics_binary import metrics_per_fold_binary, resulting_binary
-from m_package.common.utils import plot_history, plot_loss, saving_results, save_model, conf_matrix
+from m_package.common.utils import plot_history, plot_loss, saving_results, save_model, conf_matrix, GAN_plot
 
 def args_parser(arguments):
 
@@ -362,9 +362,9 @@ if __name__ == "__main__":
 
             path = "Figures"
             model_name_save_n = f"{gan_epoch}{data_name}_GAN_norm_{num_classes}"
-            gan_norm.fit(norm_dataset, epochs=gan_epoch)
-            gan_norm.plot_losses(path, model_name_save_n)
-
+            hist_norm = gan_norm.fit(norm_dataset, epochs=gan_epoch)
+            GAN_plot(hist_norm, path, model_name_save_n)
+        
             #build and train generator for dys class
             generator_dys = build_generator(image_shape=tuple(image_shape), dense_image_shape=np.prod(image_shape))
             discriminator_dys = build_discriminator(size)
@@ -375,8 +375,8 @@ if __name__ == "__main__":
                              d_loss=tf.keras.losses.BinaryCrossentropy())
 
             model_name_save_d = f"{gan_epoch}{data_name}_GAN_dys_{num_classes}"
-            gan_dys.fit(dys_dataset, epochs=gan_epoch)
-            gan_dys.plot_losses(path, model_name_save_d)
+            hist_dys = gan_dys.fit(dys_dataset, epochs=gan_epoch)
+            GAN_plot(hist_dys, path, model_name_save_d)
 
             #build and train ce_model
             weights_ce = [discriminator_norm.layers[6].get_weights(), discriminator_dys.layers[6].get_weights()]

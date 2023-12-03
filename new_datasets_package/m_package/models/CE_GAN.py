@@ -72,9 +72,6 @@ class GAN(Model):
         self.discriminator = discriminator
         self.batch_size = batch_size
 
-        self.d_losses = []
-        self.g_losses = []
-
     def compile(self, g_opt, d_opt, g_loss, d_loss, *args, **kwargs):
 
         super().compile(*args, **kwargs)
@@ -105,8 +102,6 @@ class GAN(Model):
         dgrad = d_tape.gradient(total_d_loss, self.discriminator.trainable_variables)
         self.d_opt.apply_gradients(zip(dgrad, self.discriminator.trainable_variables))
 
-        self.d_losses.append(total_d_loss.numpy())
-
         with tf.GradientTape() as g_tape:
             gen_images = self.generator(tf.random.normal((self.batch_size,128,1)), training=True)
 
@@ -117,21 +112,7 @@ class GAN(Model):
         ggrad = g_tape.gradient(total_g_loss, self.generator.trainable_variables)
         self.g_opt.apply_gradients(zip(ggrad, self.generator.trainable_variables))
 
-        self.g_losses.append(total_g_loss.numpy())
-
         return {"d_loss":total_d_loss, "g_loss":total_g_loss}
-    
-    def plot_losses(self, name, path):
-        fig, ax = plt.subplots( )
-        tick = max(len(self.d_losses) // 5, 1)
-        ax.xaxis.set_major_locator(ticker.MultipleLocator(tick))
-        ax.plot(self.d_losses, label="Discriminator Loss")
-        ax.plot(self.g_losses, label="Generator Loss")
-        ax.legend()
-        ax.title.set_text('model loss')
-        ax.set_ylabel('loss')
-        ax.set_xlabel('epoch')
-        plt.savefig(f'{path}/{name}_loss.png', bbox_inches='tight') 
 
 
 

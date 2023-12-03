@@ -2,10 +2,12 @@ import argparse
 import pickle
 import os
 import tensorflow as tf
+import numpy as np
 
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 
+from m_package.models.CE_GAN import build_generator, build_discriminator, GAN, class_expert_model
 from m_package.models.Conv_LSTM_grad import build_basic, build_deep, ConvLSTM
 from m_package.models.ResNet import Resnet
 from m_package.data.creartion import DyslexiaVizualization
@@ -55,6 +57,7 @@ if __name__ == "__main__":
             "conv_grad is for convolutional neural network"
             "conv_grad_deep is for deeper convolutional neural network"
             "resnet is for ResNet model"
+            "ce_gan is for generative adversarial model"
     )
 
     parser.add_argument(
@@ -67,6 +70,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     run, epoch_num, data_name, model_name, num_classes = args_parser(arguments=args)
+    batch_size = 16
 
     print(
         "configuration: \n",
@@ -142,7 +146,6 @@ if __name__ == "__main__":
 
 
     def split_data(X, y):
-        batch_size = 16
         # Multi-class labels: 0 -> norm; 1 -> risk; 2-> dyslexia
         # Binary labels: 0 -> norm; 1 -> dyslexia
         X_train, X_valt, y_train, y_valt = train_test_split(X, y, test_size=0.35, stratify=y)
@@ -158,6 +161,33 @@ if __name__ == "__main__":
         test_dataset = test_dataset.batch(batch_size, drop_remainder=True)
 
         return train_dataset, val_dataset, test_dataset
+    
+
+    def GAN_data(data_name):
+        if data_name == "_by_size":
+            type_creation, size_cr = "by_size", [16, 64]
+        elif data_name == "_traj":
+            type_creation, size_cr = "traj", [16, 64]
+        else:
+            type_creation, size_cr = "huddle", [32, 64]
+
+        #norm class
+        dataset_creator_traj = DyslexiaVizualization(size_cr, dataset_name="Fixation_cutted_binary_norm.csv", path="Datasets", file_format="csv")
+        X_norm, y_norm = dataset_creator_traj.get_datas(type_creation)
+        y_norm = np.argmax(y_norm, axis=1)
+        train_dataset = tf.data.Dataset.from_tensor_slices((X_norm, y_norm))
+        train_dataset_norm = train_dataset.shuffle(buffer_size=len(X_norm)).batch(batch_size)
+
+        #dys class
+        dataset_creator_traj = DyslexiaVizualization(size_cr, dataset_name="Fixation_cutted_binary_dys.csv", path="Datasets", file_format="csv")
+        X_dys, y_dys = dataset_creator_traj.get_datas(type_creation)
+        y_dys = np.argmax(y_dys, axis=1)
+        train_dataset = tf.data.Dataset.from_tensor_slices((X_dys, y_dys))
+        train_dataset_dys = train_dataset.shuffle(buffer_size=len(X_dys)).batch(batch_size)
+
+        print(X_norm.shape, X_dys.shape)
+
+        return train_dataset_norm, train_dataset_dys
     
 
     def build(n_classes, model_n):
@@ -203,7 +233,7 @@ if __name__ == "__main__":
             train_dataset, val_dataset, test_dataset = split_data(X_data, y_data) 
 
             #build and train model on huge number of epochs
-            optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=1e-4)
+            optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4)
             loss_fn, train_metric, val_metric, model = build(num_classes, model_name)
 
             conv_model = ConvLSTM(model, optimizer, loss_fn, train_metric, val_metric)
@@ -235,7 +265,7 @@ if __name__ == "__main__":
                 #creating the datasets
                 train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
                 #build and train model on huge number of epochs
-                optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=1e-4)
+                optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4)
                 loss_fn, train_metric, val_metric, model = build(num_classes, model_name)
 
                 conv_model = ConvLSTM(model, optimizer, loss_fn, train_metric, val_metric)
@@ -270,7 +300,7 @@ if __name__ == "__main__":
         if run == 1: #done
             train_dataset, val_dataset, test_dataset = split_data(X_data, y_data) 
             model = Resnet(tuple(size + [1]))
-            model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+            model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
             history = model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
 
             path = "Figures"
@@ -288,12 +318,12 @@ if __name__ == "__main__":
                 "f1": []
             }
 
-            for _ in range(2):
+            for _ in range(5):
                 #creating the datasets
                 train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
                 #build and train model on huge number of epochs
                 model = Resnet(tuple(size + [1]))
-                model.compile(optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+                model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
                 model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
 
                 #calc metrics 
@@ -311,4 +341,56 @@ if __name__ == "__main__":
             #saving conf_matrix
             conf_matrix(model, test_dataset, f"model_{model_name_save}")
 
+    elif model_name == "ce_gan" and num_classes == 2:
+        if run == 1: #train gan and plot amount of epoch for ce model 
+            #data for ce_model
+            train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
+
+            #data for gan model
+            norm_dataset, dys_dataset = GAN_data(data_name)
+
+            image_shape = size + [1]
+            gan_epoch = 200
+            #build and train generator for norm class
+            generator_norm = build_generator(image_shape=tuple(image_shape), dense_image_shape=np.prod(image_shape))
+            discriminator_norm = build_discriminator(size)
+            gan_norm = GAN(generator_norm, discriminator_norm, batch_size=batch_size)
+            gan_norm.compile(g_opt=tf.keras.optimizers.Adam(1e-4),
+                             d_opt=tf.keras.optimizers.Adam(1e-4),
+                             g_loss=tf.keras.losses.BinaryCrossentropy(),
+                             d_loss=tf.keras.losses.BinaryCrossentropy())
+
+            path = "Figures"
+            model_name_save_n = f"{gan_epoch}{data_name}_GAN_norm_{num_classes}"
+            gan_norm.fit(norm_dataset, epochs=gan_epoch)
+            gan_norm.plot_losses(path, model_name_save_n)
+
+            #build and train generator for dys class
+            generator_dys = build_generator(image_shape=tuple(image_shape), dense_image_shape=np.prod(image_shape))
+            discriminator_dys = build_discriminator(size)
+            gan_dys = GAN(generator_dys, discriminator_dys, batch_size=batch_size)
+            gan_dys.compile(g_opt=tf.keras.optimizers.Adam(1e-4),
+                             d_opt=tf.keras.optimizers.Adam(1e-4),
+                             g_loss=tf.keras.losses.BinaryCrossentropy(),
+                             d_loss=tf.keras.losses.BinaryCrossentropy())
+
+            model_name_save_d = f"{gan_epoch}{data_name}_GAN_dys_{num_classes}"
+            gan_norm.fit(dys_dataset, epochs=gan_epoch)
+            gan_norm.plot_losses(path, model_name_save_d)
+
+            #build and train ce_model
+            weights_ce = [discriminator_norm.layers[6].get_weights(), discriminator_dys.layers[6].get_weights()]
+            ce_model = class_expert_model(weights_ce, tuple(image_shape))
+
+            ce_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+            history = ce_model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
+
+            path = "Figures"
+            model_name_save = f"{epoch_num}{data_name}_{model_name}_{num_classes}"
+
+            plot_history(history.history['loss'], history.history['val_auc'], history.history['auc'], path, model_name_save, history.history['val_loss'])
+            plot_loss(history.history['loss'], path, model_name_save)
+
+        elif run == 2:
+            pass
 

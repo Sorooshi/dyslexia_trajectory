@@ -43,6 +43,18 @@ def plot_loss(history, path, name):
     plt.savefig(f'{path}/{name}_loss.png', bbox_inches='tight') 
 
 
+def GAN_plot(history, path, name):
+    fig, ax = plt.subplots( )
+    tick = max(len(history.history["d_loss"]) // 5, 1)
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(tick))
+    ax.plot(history.history['d_loss'], label='d_loss')
+    ax.plot(history.history['g_loss'], label='g_loss')
+    ax.title.set_text('model loss')
+    ax.set_ylabel('loss')
+    ax.set_xlabel('epoch')
+    ax.legend()
+    plt.savefig(f'{path}/{name}_loss.png', bbox_inches='tight')
+
 
 def saving_results(results, name):
     with open(f'Results/{name}.txt','wb') as f:

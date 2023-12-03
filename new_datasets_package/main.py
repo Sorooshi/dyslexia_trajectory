@@ -375,8 +375,8 @@ if __name__ == "__main__":
                              d_loss=tf.keras.losses.BinaryCrossentropy())
 
             model_name_save_d = f"{gan_epoch}{data_name}_GAN_dys_{num_classes}"
-            gan_norm.fit(dys_dataset, epochs=gan_epoch)
-            gan_norm.plot_losses(path, model_name_save_d)
+            gan_dys.fit(dys_dataset, epochs=gan_epoch)
+            gan_dys.plot_losses(path, model_name_save_d)
 
             #build and train ce_model
             weights_ce = [discriminator_norm.layers[6].get_weights(), discriminator_dys.layers[6].get_weights()]

@@ -23,7 +23,7 @@ def args_parser(arguments):
     _data_name = arguments.data_name.lower()
     _model_name = arguments.model_name.lower()
     _num_classes = arguments.num_classes
-    _type_name = arguments.model_name.lower()
+    _type_name = arguments.type_name.lower()
 
     return  _run, _epoch_num, _data_name, _model_name, _num_classes, _type_name
 
@@ -71,7 +71,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
          "--type_name", type=str, default="conv",
-        help="Model's name"
+        help="type_name"
             "conv is for convolutional type"
             "lstm is for convlstm type"
     )
@@ -90,6 +90,7 @@ if __name__ == "__main__":
         "  num_classes", num_classes, "\n",
         "  type", type_name, "\n"
     )
+    
 
     path = Path("Datasets")
 
@@ -212,6 +213,7 @@ if __name__ == "__main__":
         #build and train generator for norm class
         generator_norm = build_generator(image_shape=tuple(image_shape), dense_image_shape=np.prod(image_shape))
         discriminator_norm = build_discriminator_func(size)
+        print(discriminator_norm.summary())
         gan_norm = GAN(generator_norm, discriminator_norm, batch_size=batch_size)
         gan_norm.compile(g_opt=tf.keras.optimizers.Adam(1e-4),
                              d_opt=tf.keras.optimizers.Adam(1e-4),

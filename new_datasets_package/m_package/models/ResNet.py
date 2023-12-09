@@ -97,10 +97,6 @@ def Resnet_LSTM(input_shape=(20,16,64,1), num_classes=2):
     x = resnet_block_LSTM(x, 256)
     x = resnet_block_LSTM(x, 256)
     x = resnet_block_LSTM(x, 256)
-    
-    x = resnet_block_LSTM(x, 512)
-    x = resnet_block_LSTM(x, 512)
-    x = resnet_block_LSTM(x, 512)
 
     x = GlobalAveragePooling3D()(x)
     outputs = Dense(num_classes, activation='softmax')(x)

@@ -406,7 +406,7 @@ if __name__ == "__main__":
         if type_name == "conv":
             ce_model_func = class_expert_model
         elif type_name == "lstm":
-            ce_model_func_func = class_expert_model_lstm
+            ce_model_func = class_expert_model_lstm
     
         if run == 1: #train gan and plot amount of epoch for ce model 
             #data for ce_model

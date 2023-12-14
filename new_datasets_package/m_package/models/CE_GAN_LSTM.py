@@ -77,13 +77,13 @@ def class_expert_model_lstm(weights, input_shape=(20,16,64,1), num_classes=2):
     x = layer_block(inputs, 64, 5)
     x = layer_block(x, 128, 3)
     #freeze block class 1
-    conv_non_trainable1 = ConvLSTM2D(256, kernel_size=3, padding="same", data_format='channels_last', name="freeze1", return_sequences=True)
+    conv_non_trainable1 = ConvLSTM2D(128, kernel_size=3, padding="same", data_format='channels_last', name="freeze1", return_sequences=True)
     conv_non_trainable1.trainable = False
     x1 = conv_non_trainable1(x)
     x1 = Activation("leaky_relu")(x1)
     x1 = Dropout(0.4)(x1)
     #freeze block class 2
-    conv_non_trainable2 = ConvLSTM2D(256, kernel_size=3, padding="same", data_format='channels_last', name="freeze2", return_sequences=True)
+    conv_non_trainable2 = ConvLSTM2D(128, kernel_size=3, padding="same", data_format='channels_last', name="freeze2", return_sequences=True)
     conv_non_trainable2.trainable = False
     x2 = conv_non_trainable2(x)
     x2 = Activation("leaky_relu")(x2)

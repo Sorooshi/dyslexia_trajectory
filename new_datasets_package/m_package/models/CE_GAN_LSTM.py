@@ -36,7 +36,6 @@ def build_generator_lstm(image_shape, dense_image_shape):
         #out of the model
         model.add(Flatten())
         model.add(Dense(256, activation='relu', kernel_initializer='he_uniform'))
-        model.add(Dense(2048, activation='relu', kernel_initializer='he_uniform'))
         model.add(LeakyReLU(0.2))
         model.add(Dense(dense_image_shape, activation='tanh', name='Dense_Output')) 
         model.add(Reshape(image_shape))  
@@ -57,7 +56,7 @@ def build_discriminator_lstm(image_shape):
         model.add(Dropout(0.4))
 
         #third block take this one for the expert layer weight
-        model.add(ConvLSTM2D(256, kernel_size=3, strides=2, padding="same", data_format='channels_last', return_sequences=True))
+        model.add(ConvLSTM2D(128, kernel_size=3, strides=2, padding="same", data_format='channels_last', return_sequences=True))
         model.add(LeakyReLU(0.2))
         model.add(Dropout(0.4))
         

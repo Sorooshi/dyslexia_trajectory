@@ -7,6 +7,41 @@ from matplotlib import ticker
 from keras.models import Model
 
 noise_shape = 128
+
+#generator model
+def build_generator_lstm(image_shape, dense_image_shape):
+        model = keras.Sequential()
+        #noise processing
+        model.add(InputLayer(input_shape=noise_shape))
+        model.add(Dense(4 * 4 * 10 * 1, activation="relu")) 
+        model.add(LeakyReLU(0.2))
+        model.add(Reshape((4,4,10,1)))
+
+        #first decomposition block
+        model.add(UpSampling3D())
+        model.add(ConvLSTM2D(128, kernel_size=3, padding="same", data_format='channels_last', return_sequences=True))
+        model.add(BatchNormalization(momentum=0.8))
+        
+        #second decomposition block
+        model.add(UpSampling3D())
+        model.add(ConvLSTM2D(64, kernel_size=3, padding="same", data_format='channels_last', return_sequences=True))
+        model.add(BatchNormalization(momentum=0.8))
+
+        #third decomposition block
+        model.add(UpSampling3D())
+        model.add(ConvLSTM2D(64, kernel_size=2, padding="same", data_format='channels_last', return_sequences=True))
+        model.add(BatchNormalization(momentum=0.8))
+
+
+        #out of the model
+        model.add(Flatten())
+        model.add(Dense(256, activation='relu', kernel_initializer='he_uniform'))
+        model.add(Dense(2048, activation='relu', kernel_initializer='he_uniform'))
+        model.add(LeakyReLU(0.2))
+        model.add(Dense(dense_image_shape, activation='tanh', name='Dense_Output')) 
+        model.add(Reshape(image_shape))  
+        return model
+    
     
 # discriminator model
 def build_discriminator_lstm(image_shape):

@@ -8,7 +8,7 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 
 from m_package.models.CE_GAN import build_generator, build_discriminator, GAN, class_expert_model
-from m_package.models.CE_GAN_LSTM import build_discriminator_lstm, class_expert_model_lstm
+from m_package.models.CE_GAN_LSTM import build_generator_lstm, build_discriminator_lstm, class_expert_model_lstm
 from m_package.models.Conv_LSTM_grad import build_basic, build_deep, ConvLSTM
 from m_package.models.ResNet import Resnet, Resnet_LSTM
 from m_package.data.creartion import DyslexiaVizualization
@@ -203,15 +203,17 @@ if __name__ == "__main__":
     def train_GAN(save:bool = True):
         if type_name == "conv":
             build_discriminator_func = build_discriminator
+            build_generator_func = build_generator
         elif type_name == "lstm":
             build_discriminator_func = build_discriminator_lstm
+            build_generator_func = build_generator_lstm
         #data for gan model
         norm_dataset, dys_dataset = GAN_data(data_name)
 
         image_shape = size + [1]
         gan_epoch = 200
         #build and train generator for norm class
-        generator_norm = build_generator(image_shape=tuple(image_shape), dense_image_shape=np.prod(image_shape))
+        generator_norm = build_generator_func(image_shape=tuple(image_shape), dense_image_shape=np.prod(image_shape))
         discriminator_norm = build_discriminator_func(size)
         print(discriminator_norm.summary())
         gan_norm = GAN(generator_norm, discriminator_norm, batch_size=batch_size)
@@ -221,14 +223,14 @@ if __name__ == "__main__":
                              d_loss=tf.keras.losses.BinaryCrossentropy())
 
         path = "Figures"
-        model_name_save_n = f"{gan_epoch}{data_name}_GAN_norm_{num_classes}"
+        model_name_save_n = f"{gan_epoch}{data_name}_GAN_norm_{num_classes}_{type_name}"
         hist_norm = gan_norm.fit(norm_dataset, epochs=gan_epoch)
         GAN_plot(hist_norm, path, model_name_save_n)
         if save:
             save_model(generator_norm, model_name_save_n)
         
         #build and train generator for dys class
-        generator_dys = build_generator(image_shape=tuple(image_shape), dense_image_shape=np.prod(image_shape))
+        generator_dys = build_generator_func(image_shape=tuple(image_shape), dense_image_shape=np.prod(image_shape))
         discriminator_dys = build_discriminator_func(size)
         gan_dys = GAN(generator_dys, discriminator_dys, batch_size=batch_size)
         gan_dys.compile(g_opt=tf.keras.optimizers.Adam(1e-4),
@@ -236,7 +238,7 @@ if __name__ == "__main__":
                              g_loss=tf.keras.losses.BinaryCrossentropy(),
                              d_loss=tf.keras.losses.BinaryCrossentropy())
 
-        model_name_save_d = f"{gan_epoch}{data_name}_GAN_dys_{num_classes}"
+        model_name_save_d = f"{gan_epoch}{data_name}_GAN_dys_{num_classes}_{type_name}"
         hist_dys = gan_dys.fit(dys_dataset, epochs=gan_epoch)
         GAN_plot(hist_dys, path, model_name_save_d)
         if save:
@@ -416,6 +418,7 @@ if __name__ == "__main__":
             #build and train ce_model
             weights_ce = [discriminator_norm.layers[6].get_weights(), discriminator_dys.layers[6].get_weights()]
             ce_model = ce_model_func(weights_ce, tuple(image_shape))
+            print(ce_model.summary(show_trainable=True))
 
             ce_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
             history = ce_model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)

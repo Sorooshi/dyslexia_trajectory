@@ -3,9 +3,13 @@ import pickle
 import os
 import tensorflow as tf
 import numpy as np
+from skimage.feature import hog
 
 from pathlib import Path
 from sklearn.model_selection import train_test_split
+from sklearn.model_selection import KFold
+from sklearn import svm
+from sklearn.neural_network import MLPClassifier
 
 from m_package.models.CE_GAN import build_generator, build_discriminator, GAN, class_expert_model
 from m_package.models.CE_GAN_LSTM import build_generator_lstm, build_discriminator_lstm, class_expert_model_lstm
@@ -13,7 +17,7 @@ from m_package.models.Conv_LSTM_grad import build_basic, build_deep, ConvLSTM
 from m_package.models.ResNet import Resnet, Resnet_LSTM
 from m_package.data.creartion import DyslexiaVizualization
 from m_package.common.metrics_multi import metrics_per_fold, resulting
-from m_package.common.metrics_binary import metrics_per_fold_binary, resulting_binary
+from m_package.common.metrics_binary import metrics_per_fold_binary, resulting_binary,linear_per_fold
 from m_package.common.utils import plot_history, plot_loss, saving_results, save_model, conf_matrix, GAN_plot
 
 def args_parser(arguments):
@@ -51,6 +55,7 @@ if __name__ == "__main__":
              "_by_size is for By size (without trajectories- 20 frames)"
              "_traj is for By size (with trajectories - 20 frames)"
              "_huddled is for By size (huddled - 20 frames)"
+
     )
 
     parser.add_argument(
@@ -60,6 +65,7 @@ if __name__ == "__main__":
             "conv_grad_deep is for deeper convolutional neural network"
             "resnet is for ResNet model"
             "ce_gan is for generative adversarial model"
+            "linear is for classifayer models"
     )
 
     parser.add_argument(
@@ -74,6 +80,7 @@ if __name__ == "__main__":
         help="type_name"
             "conv is for convolutional type"
             "lstm is for convlstm type"
+            "hog is for feature extraction"
     )
 
     args = parser.parse_args()
@@ -265,6 +272,33 @@ if __name__ == "__main__":
             model = build_basic('relu', size, num_classes, activation_dense)
         
         return loss_fn, train_metric, val_metric, model
+    
+    def hog_dataset(X, y, pixels_cell):
+        y = np.argmax(y, axis=1)
+        X_hog = []
+        X_features_hog = []
+        for video in X:
+            video_arr = []
+            features_arr = []
+            for frame in video:
+                fd, hog_frame = hog(frame, orientations=8, pixels_per_cell=(pixels_cell, pixels_cell),
+                    cells_per_block=(1,1), visualize=True)
+                video_arr.append(hog_frame)
+                features_arr.append(fd)
+            X_hog.append(video_arr)
+            X_features_hog.append(features_arr)
+        return np.array(X_hog), np.array(X_features_hog), y
+    
+    def dict_creation():
+        metrics_results = {
+                "auc_roc" : [],
+                "accuracy" : [],
+                "precision": [],
+                "recall": [],
+                "f1": []
+            }
+        return metrics_results
+    
     
     if run == 1 or run == 2: #not for dataset creation and drawing matrices
         gpus = tf.config.list_physical_devices('GPU')
@@ -466,3 +500,113 @@ if __name__ == "__main__":
             
             #saving conf_matrix
             conf_matrix(ce_model, test_dataset, f"model_{model_name_save}")
+    
+    elif model_name != "ce_gan" and num_classes == 2 and type_name == "hog":
+        #dataset creation
+        print("Start to create hog data")
+        X_h, X_h_f, y = hog_dataset(X_data, y_data, 2)
+        print("Hog data has been created")
+        if run == 1:
+            train_dataset, val_dataset, test_dataset = split_data(X_h, y_data) 
+
+            #conv_model
+            #build and train model on huge number of epochs
+            optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4)
+            loss_fn, train_metric, val_metric, model = build(num_classes, model_name)
+
+            conv_model = ConvLSTM(model, optimizer, loss_fn, train_metric, val_metric)
+            conv_model.fit(epoch_num, train_dataset, val_dataset)
+
+            path = "Figures"
+
+            loss = conv_model.loss_per_training
+            valid_auc_ = conv_model.valid_auc
+            train_auc_ = conv_model.training_auc
+
+            model_name_save = f"{epoch_num}{data_name}_{model_name}_{num_classes}_conv_grad"
+
+            plot_history(loss, valid_auc_, train_auc_, path, model_name_save)
+            plot_loss(loss, path, model_name_save)
+
+            #resnet model HOG
+            model = Resnet(tuple(size + [1]))
+            model.compile(optimizer=optimizer, loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+            history = model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
+
+            path = "Figures"
+            model_name_save = f"{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}_resnet"
+
+            plot_history(history.history['loss'], history.history['val_auc'], history.history['auc'], path, model_name_save, history.history['val_loss'])
+            plot_loss(history.history['loss'], path, model_name_save)
+
+        elif run == 2:
+            metrics_results = {
+                "auc_roc" : [],
+                "accuracy" : [],
+                "precision": [],
+                "recall": [],
+                "f1": []
+            }
+
+            if model_name == "conv_grad":
+                for _ in range(5):
+                    train_dataset, val_dataset, test_dataset = split_data(X_h, y_data) 
+                    optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4)
+                    loss_fn, train_metric, val_metric, model = build(num_classes, model_name)
+
+                    conv_model = ConvLSTM(model, optimizer, loss_fn, train_metric, val_metric)
+                    conv_model.fit(epoch_num, train_dataset, val_dataset)
+
+                    model_trained = conv_model.ret() 
+
+                    metrics_results = metrics_per_fold_binary(model_trained, test_dataset, metrics_results)
+
+                final_results = resulting_binary(metrics_results)
+                print(final_results)
+                model_name_save = f"{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}"
+                saving_results(final_results, model_name_save)
+                conf_matrix(model_trained, test_dataset, f"model_{model_name_save}")
+
+            elif model_name == "resnet":
+                for _ in range(5):
+                    train_dataset, val_dataset, test_dataset = split_data(X_h, y_data) 
+                    model = Resnet(tuple(size + [1]))
+                    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+                    model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
+
+                    metrics_results = metrics_per_fold_binary(model, test_dataset, metrics_results)
+
+                final_results = resulting_binary(metrics_results)
+                print(final_results)
+
+                model_name_save = f"{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}"
+
+                saving_results(final_results, model_name_save)
+                conf_matrix(model, test_dataset, f"model_{model_name_save}")
+            elif model_name == "linear":
+                metrics_per_model = []
+                models = [svm.NuSVC(probability=True), svm.SVC(probability=True), MLPClassifier()]
+
+                for _ in range(3):
+                    dict_m = dict_creation()
+                    metrics_per_model.append(dict_m)
+
+                X_f_h_concated = np.reshape(X_h_f, (X_h_f.shape[0], X_h_f.shape[1]*X_h_f.shape[2]))
+                kf = KFold(n_splits=2)
+                for train_index , test_index in kf.split(X_f_h_concated):
+                    X_train , X_test = X_f_h_concated[train_index], X_f_h_concated[test_index]
+                    y_train , y_test = y[train_index] , y[test_index]
+
+                    for i in range(len(models)):
+                        model = models[i]
+                        model.fit(X_train,y_train)
+                        pred_values = model.predict(X_test)
+                        pred_proba = model.predict_proba(X_test)[:, 1]
+                        metrics_per_model[i] = linear_per_fold(y_test, pred_proba, pred_values, metrics_per_model[i])
+
+                final_metrics = []
+                for i in range(len(metrics_per_model)):
+                    final_metrics.append(resulting_binary(metrics_per_model[i]))
+
+                saving_results(final_metrics, f"linear_models_{type_name}")
+                saving_results(models, f"linear_models_saved_models{type_name}")

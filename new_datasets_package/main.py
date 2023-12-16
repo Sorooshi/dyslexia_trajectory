@@ -318,7 +318,7 @@ if __name__ == "__main__":
             print("CPU")
 
 
-    if (model_name == "conv_grad" or model_name == "conv_grad_deep") and run > 0:
+    if (model_name == "conv_grad" or model_name == "conv_grad_deep") and run > 0 and type_name != "hog":
         if run == 1: # tune the number of epoch (done)
             #creating the datasets
             train_dataset, val_dataset, test_dataset = split_data(X_data, y_data) 
@@ -387,7 +387,7 @@ if __name__ == "__main__":
             conf_matrix(model_trained, test_dataset, f"model_{model_name_save}")
     
     
-    elif model_name == "resnet" and num_classes == 2:
+    elif model_name == "resnet" and num_classes == 2 and type_name != "hog":
 
         if type_name == "conv":
             func_model = Resnet

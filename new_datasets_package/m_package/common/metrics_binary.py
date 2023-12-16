@@ -51,3 +51,12 @@ def resulting_binary(metrics_dict):
         std_ = round(np.std(metrics_dict[k]), 4)
         d[k] = str(mean_) + " pm " + str(std_)
     return d
+
+def linear_per_fold(y_test, y_pred_proba, y_pred_labels, metrics_dict):
+    funcs = [AUC, ACC, PR, RECC, F1] #AUC -> proba; else -> labels
+    for (key, func) in zip(metrics_dict.keys(), funcs):
+        if key == "auc_roc":
+            metrics_dict[key].append(round(func(y_test, y_pred_proba), 4)) #proba
+        else:
+            metrics_dict[key].append(round(func(y_test, y_pred_labels), 4)) #labels
+    return metrics_dict

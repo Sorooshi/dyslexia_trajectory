@@ -592,7 +592,7 @@ if __name__ == "__main__":
                     metrics_per_model.append(dict_m)
 
                 X_f_h_concated = np.reshape(X_h_f, (X_h_f.shape[0], X_h_f.shape[1]*X_h_f.shape[2]))
-                kf = KFold(n_splits=2)
+                kf = KFold(n_splits=5)
                 for train_index , test_index in kf.split(X_f_h_concated):
                     X_train , X_test = X_f_h_concated[train_index], X_f_h_concated[test_index]
                     y_train , y_test = y[train_index] , y[test_index]

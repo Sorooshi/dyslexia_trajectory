@@ -608,5 +608,5 @@ if __name__ == "__main__":
                 for i in range(len(metrics_per_model)):
                     final_metrics.append(resulting_binary(metrics_per_model[i]))
 
-                saving_results(final_metrics, f"linear_models_{type_name}")
-                saving_results(models, f"linear_models_saved_models{type_name}")
+                saving_results(final_metrics, f"linear_models_{type_name}_{data_name}")
+                saving_results(models, f"linear_models_saved_models{type_name}_{data_name}")

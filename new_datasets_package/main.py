@@ -10,6 +10,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.model_selection import KFold
 from sklearn import svm
 from sklearn.neural_network import MLPClassifier
+from sklearn.ensemble import RandomForestClassifier
+from skopt import BayesSearchCV
+from skopt.space import Real, Categorical, Integer
 
 from m_package.models.CE_GAN import build_generator, build_discriminator, GAN, class_expert_model
 from m_package.models.CE_GAN_LSTM import build_generator_lstm, build_discriminator_lstm, class_expert_model_lstm
@@ -161,6 +164,10 @@ if __name__ == "__main__":
         with open(os.path.join(path, f'y_by_size_{num_classes}.txt'),'wb') as f:
             pickle.dump(y_s, f)
         print("By size dataset has been created\n")
+
+
+    if run == 0 and type_name == "hog":
+        pass
 
 
     def split_data(X, y):
@@ -502,13 +509,12 @@ if __name__ == "__main__":
             conf_matrix(ce_model, test_dataset, f"model_{model_name_save}")
     
     elif model_name != "ce_gan" and num_classes == 2 and type_name == "hog":
-        #dataset creation
+        #dataset loading...
         print("Start to create hog data")
         X_h, X_h_f, y = hog_dataset(X_data, y_data, 2)
         print("Hog data has been created")
         if run == 1:
             train_dataset, val_dataset, test_dataset = split_data(X_h, y_data) 
-
             #conv_model
             #build and train model on huge number of epochs
             optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4)
@@ -585,8 +591,8 @@ if __name__ == "__main__":
                 conf_matrix(model, test_dataset, f"model_{model_name_save}")
             elif model_name == "linear":
                 metrics_per_model = []
-                models = [svm.NuSVC(probability=True), svm.SVC(probability=True), MLPClassifier()]
-
+                models = [svm.NuSVC(probability=True), svm.SVC(probability=True), MLPClassifier()] 
+                #try to use random forest (min numer of samples sumpels per split; n_of est at least 2 or 3k; min number of )
                 for _ in range(3):
                     dict_m = dict_creation()
                     metrics_per_model.append(dict_m)
@@ -610,3 +616,38 @@ if __name__ == "__main__":
 
                 saving_results(final_metrics, f"linear_models_{type_name}_{data_name}")
                 saving_results(models, f"linear_models_saved_models{type_name}_{data_name}")
+            
+            elif model_name == "random_forest":
+                X_f_h_concated = np.reshape(X_h_f, (X_h_f.shape[0], X_h_f.shape[1]*X_h_f.shape[2]))
+                #tuning
+                print("Start of tuning")
+                X_train, X_val, y_train, y_val = train_test_split(X_f_h_concated, y, test_size=0.35, stratify=y)
+                model = RandomForestClassifier()
+                param_space = {
+                    'n_estimators': Integer(2000, 5000),
+                    'max_depth': Integer(5, 20),
+                    'min_samples_split': Integer(2, 50),
+                    'min_samples_leaf': Integer(1, 50)
+                }
+                opt = BayesSearchCV(model, param_space, cv=5, n_jobs=5)
+                np.int = int
+                opt.fit(X_train, y_train)
+                print(opt.best_params_)
+
+                #CV for best params
+                kf = KFold(n_splits=5)
+                for train_index , test_index in kf.split(X_f_h_concated):
+                    X_train , X_test = X_f_h_concated[train_index], X_f_h_concated[test_index]
+                    y_train , y_test = y[train_index] , y[test_index]
+
+                    model_best = RandomForestClassifier(**opt.best_params_)
+                    model_best.fit(X_train,y_train)
+                    pred_values = model_best.predict(X_test)
+                    pred_proba = model_best.predict_proba(X_test)[:, 1]
+                    metrics_results = linear_per_fold(y_test, pred_proba, pred_values, metrics_results)
+
+                final_results = resulting_binary(metrics_results)
+                print(metrics_results)
+                print(final_results)
+                saving_results(final_results , f"RF_{type_name}_{data_name}_{model_name}")
+                saving_results(models, f"RF_saved_models{type_name}_{data_name}_{model_name}")

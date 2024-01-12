@@ -13,6 +13,7 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.ensemble import RandomForestClassifier
 from skopt import BayesSearchCV
 from skopt.space import Real, Categorical, Integer
+from sklearn.preprocessing import StandardScaler
 
 from m_package.models.CE_GAN import build_generator, build_discriminator, GAN, class_expert_model
 from m_package.models.CE_GAN_LSTM import build_generator_lstm, build_discriminator_lstm, class_expert_model_lstm
@@ -58,32 +59,33 @@ if __name__ == "__main__":
              "_by_size is for By size (without trajectories- 20 frames)"
              "_traj is for By size (with trajectories - 20 frames)"
              "_huddled is for By size (huddled - 20 frames)"
-
+             "_hog_by_size is for hog By size (without trajectories- 20 frames)"
+             "_hog_traj is for hog By size (with trajectories - 20 frames)"
+             "_hog_huddled is for hog By size (huddled - 20 frames)"
     )
 
     parser.add_argument(
-         "--model_name", type=str, default="conv_grad",
+        "--model_name", type=str, default="conv_grad",
         help="Model's name"
             "conv_grad is for convolutional neural network"
             "conv_grad_deep is for deeper convolutional neural network"
             "resnet is for ResNet model"
             "ce_gan is for generative adversarial model"
-            "linear is for classifayer models"
+            "sklearn is for basic models"
     )
 
     parser.add_argument(
-         "--num_classes", type=int, default=2,
+        "--num_classes", type=int, default=2,
         help="Number of classes"
             " 2 is for binary classification"
             " 3 is for multi-class"
     )
 
     parser.add_argument(
-         "--type_name", type=str, default="conv",
+        "--type_name", type=str, default="conv",
         help="type_name"
             "conv is for convolutional type"
             "lstm is for convlstm type"
-            "hog is for feature extraction"
     )
 
     args = parser.parse_args()
@@ -104,21 +106,21 @@ if __name__ == "__main__":
 
     path = Path("Datasets")
 
-    if data_name == "_by_size" and run > 0:
+    if (data_name == "_by_size" or data_name == "_hog_by_size") and run > 0:
         with open(os.path.join(path, f'X_by_size_{num_classes}.txt'),'rb') as f:
             X_data = pickle.load(f)
         with open(os.path.join(path, f'y_by_size_{num_classes}.txt'),'rb') as f:
             y_data = pickle.load(f)
         size = [20, 16, 64]
         print("by_size dataset has been loaded")
-    elif data_name == "_traj" and run > 0:
+    elif (data_name == "_traj" or data_name == "_hog_traj") and run > 0:
         with open(os.path.join(path, f'X_traj_{num_classes}.txt'),'rb') as f:
             X_data = pickle.load(f)
         with open(os.path.join(path, f'y_traj_{num_classes}.txt'),'rb') as f:
             y_data = pickle.load(f)
         size = [20, 16, 64]
         print("_traj dataset has been loaded")
-    elif data_name == "_huddled" and run > 0:
+    elif (data_name == "_huddled" or data_name == "_hog_huddled") and run > 0:
         with open(os.path.join(path, f'X_huddled_{num_classes}.txt'),'rb') as f:
             X_data = pickle.load(f)
         with open(os.path.join(path, f'y_huddled_{num_classes}.txt'),'rb') as f:
@@ -164,10 +166,6 @@ if __name__ == "__main__":
         with open(os.path.join(path, f'y_by_size_{num_classes}.txt'),'wb') as f:
             pickle.dump(y_s, f)
         print("By size dataset has been created\n")
-
-
-    if run == 0 and type_name == "hog":
-        pass
 
 
     def split_data(X, y):
@@ -280,7 +278,7 @@ if __name__ == "__main__":
         
         return loss_fn, train_metric, val_metric, model
     
-    def hog_dataset(X, y, pixels_cell):
+    def hog_dataset(X, y, pixels_cell, cell_block):
         y = np.argmax(y, axis=1)
         X_hog = []
         X_features_hog = []
@@ -289,23 +287,12 @@ if __name__ == "__main__":
             features_arr = []
             for frame in video:
                 fd, hog_frame = hog(frame, orientations=8, pixels_per_cell=(pixels_cell, pixels_cell),
-                    cells_per_block=(1,1), visualize=True)
+                    cells_per_block=(cell_block, cell_block), visualize=True)
                 video_arr.append(hog_frame)
                 features_arr.append(fd)
             X_hog.append(video_arr)
             X_features_hog.append(features_arr)
         return np.array(X_hog), np.array(X_features_hog), y
-    
-    def dict_creation():
-        metrics_results = {
-                "auc_roc" : [],
-                "accuracy" : [],
-                "precision": [],
-                "recall": [],
-                "f1": []
-            }
-        return metrics_results
-    
     
     if run == 1 or run == 2: #not for dataset creation and drawing matrices
         gpus = tf.config.list_physical_devices('GPU')
@@ -325,7 +312,55 @@ if __name__ == "__main__":
             print("CPU")
 
 
-    if (model_name == "conv_grad" or model_name == "conv_grad_deep") and run > 0 and type_name != "hog":
+    def model_tuning(X_tune, y_tune, sk_model_type):
+        """
+            X_tune, y_tune: dataset on wich tune the model
+            sk_model_type: type wich model to tune
+        """
+        if sk_model_type == "nu_svm":
+            model = svm.NuSVC()
+            param_space =  {
+                'nu': Real(0.001, 0.4, prior='uniform'),
+                'gamma': Real(1e-6, 1e+1, prior='log-uniform'),
+                'degree': Integer(1,8),
+                'kernel': Categorical(['linear', 'poly', 'rbf', "sigmoid"]),
+                'probability': Categorical([True])
+                }
+        elif sk_model_type == "svm":
+            model = svm.SVC()
+            param_space = {
+                'C': Real(1e-6, 1e+6, prior='log-uniform'),
+                'gamma': Real(1e-6, 1e+1, prior='log-uniform'),
+                'degree': Integer(1,8),
+                'kernel': Categorical(['linear', 'poly', 'rbf', "sigmoid"]),
+                'probability': Categorical([True])
+                }
+        elif sk_model_type == "mlp":
+            model = MLPClassifier()
+            param_space = {
+                "activation": Categorical(["logistic", "tanh", "relu"]),
+                "solver": Categorical(["lbfgs", "sgd", "adam"]),
+                "learning_rate": Categorical(["constant", "invscaling", "adaptive"])
+            }
+        elif sk_model_type == "rf":
+            model = RandomForestClassifier()
+            param_space = {
+                'n_estimators': Integer(2000, 50000),
+                'max_depth': Integer(2, 20),
+                'min_samples_split': Integer(2, 50),
+                'min_samples_leaf': Integer(1, 50)
+            }
+
+        #tune the model
+        #opt = BayesSearchCV(model, param_space, cv=5, n_jobs=5)
+        opt = BayesSearchCV(model, param_space, cv=2, n_jobs=1, n_iter=3)
+        np.int = int
+        opt.fit(X_tune, y_tune)
+        #print(sk_model_type)
+        #print(opt.best_params_)
+        return opt.best_params_
+
+    if (model_name == "conv_grad" or model_name == "conv_grad_deep") and run > 0:
         if run == 1: # tune the number of epoch (done)
             #creating the datasets
             train_dataset, val_dataset, test_dataset = split_data(X_data, y_data) 
@@ -392,9 +427,8 @@ if __name__ == "__main__":
             
             #saving conf_matrix
             conf_matrix(model_trained, test_dataset, f"model_{model_name_save}")
-    
-    
-    elif model_name == "resnet" and num_classes == 2 and type_name != "hog":
+      
+    elif model_name == "resnet" and num_classes == 2:
 
         if type_name == "conv":
             func_model = Resnet
@@ -508,146 +542,48 @@ if __name__ == "__main__":
             #saving conf_matrix
             conf_matrix(ce_model, test_dataset, f"model_{model_name_save}")
     
-    elif model_name != "ce_gan" and num_classes == 2 and type_name == "hog":
-        #dataset loading...
-        print("Start to create hog data")
-        X_h, X_h_f, y = hog_dataset(X_data, y_data, 2)
-        print("Hog data has been created")
-        if run == 1:
-            train_dataset, val_dataset, test_dataset = split_data(X_h, y_data) 
-            #conv_model
-            #build and train model on huge number of epochs
-            optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4)
-            loss_fn, train_metric, val_metric, model = build(num_classes, model_name)
-
-            conv_model = ConvLSTM(model, optimizer, loss_fn, train_metric, val_metric)
-            conv_model.fit(epoch_num, train_dataset, val_dataset)
-
-            path = "Figures"
-
-            loss = conv_model.loss_per_training
-            valid_auc_ = conv_model.valid_auc
-            train_auc_ = conv_model.training_auc
-
-            model_name_save = f"{epoch_num}{data_name}_{model_name}_{num_classes}_conv_grad"
-
-            plot_history(loss, valid_auc_, train_auc_, path, model_name_save)
-            plot_loss(loss, path, model_name_save)
-
-            #resnet model HOG
-            model = Resnet(tuple(size + [1]))
-            model.compile(optimizer=optimizer, loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
-            history = model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
-
-            path = "Figures"
-            model_name_save = f"{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}_resnet"
-
-            plot_history(history.history['loss'], history.history['val_auc'], history.history['auc'], path, model_name_save, history.history['val_loss'])
-            plot_loss(history.history['loss'], path, model_name_save)
-
-        elif run == 2:
-            metrics_results = {
-                "auc_roc" : [],
-                "accuracy" : [],
-                "precision": [],
-                "recall": [],
-                "f1": []
-            }
-
-            if model_name == "conv_grad":
-                for _ in range(5):
-                    train_dataset, val_dataset, test_dataset = split_data(X_h, y_data) 
-                    optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4)
-                    loss_fn, train_metric, val_metric, model = build(num_classes, model_name)
-
-                    conv_model = ConvLSTM(model, optimizer, loss_fn, train_metric, val_metric)
-                    conv_model.fit(epoch_num, train_dataset, val_dataset)
-
-                    model_trained = conv_model.ret() 
-
-                    metrics_results = metrics_per_fold_binary(model_trained, test_dataset, metrics_results)
-
-                final_results = resulting_binary(metrics_results)
-                print(final_results)
-                model_name_save = f"{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}"
-                saving_results(final_results, model_name_save)
-                conf_matrix(model_trained, test_dataset, f"model_{model_name_save}")
-
-            elif model_name == "resnet":
-                for _ in range(5):
-                    train_dataset, val_dataset, test_dataset = split_data(X_h, y_data) 
-                    model = Resnet(tuple(size + [1]))
-                    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
-                    model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
-
-                    metrics_results = metrics_per_fold_binary(model, test_dataset, metrics_results)
-
-                final_results = resulting_binary(metrics_results)
-                print(final_results)
-
-                model_name_save = f"{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}"
-
-                saving_results(final_results, model_name_save)
-                conf_matrix(model, test_dataset, f"model_{model_name_save}")
-            elif model_name == "linear":
-                metrics_per_model = []
-                models = [svm.NuSVC(probability=True), svm.SVC(probability=True), MLPClassifier()] 
-                #try to use random forest (min numer of samples sumpels per split; n_of est at least 2 or 3k; min number of )
-                for _ in range(3):
-                    dict_m = dict_creation()
-                    metrics_per_model.append(dict_m)
-
+    elif model_name == "sklearn" and num_classes == 2 and data_name[:4] == '_hog': #basic models with extracted features
+        models = [svm.NuSVC(), svm.SVC(), MLPClassifier(), RandomForestClassifier()]
+        model_type_sk = ["nu_svm", "svm", "mlp", "rf"]
+        #tune the hog data hog_dataset(X, y, pixels_cell, cell_block):
+        for pixels_cell in range(1,4):
+            for cell_block in range(1,2):
+                print(f"Pixels per cell: {pixels_cell} \t Cells per block: {cell_block}")
+                print("Start to create hog data")
+                print(X_data.shape)
+                X_h, X_h_f, y = hog_dataset(X_data, y_data, pixels_cell, cell_block)
                 X_f_h_concated = np.reshape(X_h_f, (X_h_f.shape[0], X_h_f.shape[1]*X_h_f.shape[2]))
-                kf = KFold(n_splits=5)
-                for train_index , test_index in kf.split(X_f_h_concated):
-                    X_train , X_test = X_f_h_concated[train_index], X_f_h_concated[test_index]
-                    y_train , y_test = y[train_index] , y[test_index]
-
-                    for i in range(len(models)):
-                        model = models[i]
-                        model.fit(X_train,y_train)
-                        pred_values = model.predict(X_test)
-                        pred_proba = model.predict_proba(X_test)[:, 1]
-                        metrics_per_model[i] = linear_per_fold(y_test, pred_proba, pred_values, metrics_per_model[i])
-
-                final_metrics = []
-                for i in range(len(metrics_per_model)):
-                    final_metrics.append(resulting_binary(metrics_per_model[i]))
-
-                saving_results(final_metrics, f"linear_models_{type_name}_{data_name}")
-                saving_results(models, f"linear_models_saved_models{type_name}_{data_name}")
-            
-            elif model_name == "random_forest":
-                X_f_h_concated = np.reshape(X_h_f, (X_h_f.shape[0], X_h_f.shape[1]*X_h_f.shape[2]))
-                #tuning
+                scaler = StandardScaler()
+                X_f_h_concated = scaler.fit_transform(X_f_h_concated)
+                print("Hog data has been created")
                 print("Start of tuning")
-                X_train, X_val, y_train, y_val = train_test_split(X_f_h_concated, y, test_size=0.35, stratify=y)
-                model = RandomForestClassifier()
-                param_space = {
-                    'n_estimators': Integer(2000, 5000),
-                    'max_depth': Integer(5, 20),
-                    'min_samples_split': Integer(2, 50),
-                    'min_samples_leaf': Integer(1, 50)
-                }
-                opt = BayesSearchCV(model, param_space, cv=5, n_jobs=5)
-                np.int = int
-                opt.fit(X_train, y_train)
-                print(opt.best_params_)
+                X_train_t, X_val, y_train_t, y_val = train_test_split(X_f_h_concated, y, test_size=0.5, stratify=y) 
+                #train for tuning with skopt, val for kfold validation
+                #tuning and validating models
+                for i in range(4):
+                    tune_best = model_tuning(X_train_t, y_train_t, model_type_sk[i]) #best params
 
-                #CV for best params
-                kf = KFold(n_splits=5)
-                for train_index , test_index in kf.split(X_f_h_concated):
-                    X_train , X_test = X_f_h_concated[train_index], X_f_h_concated[test_index]
-                    y_train , y_test = y[train_index] , y[test_index]
+                    metrics_results = {
+                        "auc_roc" : [],
+                        "accuracy" : [],
+                        "precision": [],
+                        "recall": [],
+                        "f1": []
+                    }
 
-                    model_best = RandomForestClassifier(**opt.best_params_)
-                    model_best.fit(X_train,y_train)
-                    pred_values = model_best.predict(X_test)
-                    pred_proba = model_best.predict_proba(X_test)[:, 1]
-                    metrics_results = linear_per_fold(y_test, pred_proba, pred_values, metrics_results)
+                    #CV for best params
+                    kf = KFold(n_splits=5)
+                    for train_index , test_index in kf.split(X_val):
+                        X_train , X_test = X_val[train_index], X_val[test_index]
+                        y_train , y_test = y_val[train_index] , y_val[test_index]
 
-                final_results = resulting_binary(metrics_results)
-                print(metrics_results)
-                print(final_results)
-                saving_results(final_results , f"RF_{type_name}_{data_name}_{model_name}")
-                saving_results(models, f"RF_saved_models{type_name}_{data_name}_{model_name}")
+                        model_best = models[i].set_params(**tune_best)
+                        model_best.fit(X_train,y_train)
+                        pred_values = model_best.predict(X_test)
+                        pred_proba = model_best.predict_proba(X_test)[:, 1]
+                        metrics_results = linear_per_fold(y_test, pred_proba, pred_values, metrics_results)
+
+                    final_results = resulting_binary(metrics_results)
+                    print(f"Results for {model_type_sk[i]} \n Best params: {tune_best} \n Pixels per cell: {pixels_cell} \t Cells per block: {cell_block}")
+                    print(f"Dict with Results: {final_results}")
+                    print("Start another tuning \n")

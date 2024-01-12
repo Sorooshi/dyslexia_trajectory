@@ -352,8 +352,7 @@ if __name__ == "__main__":
             }
 
         #tune the model
-        #opt = BayesSearchCV(model, param_space, cv=5, n_jobs=5)
-        opt = BayesSearchCV(model, param_space, cv=2, n_jobs=1, n_iter=3)
+        opt = BayesSearchCV(model, param_space, cv=5, n_jobs=5)
         np.int = int
         opt.fit(X_tune, y_tune)
         #print(sk_model_type)

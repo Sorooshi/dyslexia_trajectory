@@ -3,6 +3,124 @@ from keras.layers import *
 import numpy as np
 import tensorflow as tf
 
+def conv1d_build_deep(window_size):
+    model = keras.Sequential()
+    model.add(Conv1D(filters=32, 
+                     kernel_size=5, 
+                     activation='relu', 
+                     input_shape=(window_size, 3))) 
+
+    model.add(BatchNormalization())
+
+    model.add(Conv1D(filters=64, 
+                     kernel_size=3, 
+                     activation='relu')) 
+
+    model.add(BatchNormalization())
+
+    model.add(Conv1D(filters=64,
+                     kernel_size=1, 
+                     activation='relu')) 
+    model.add(BatchNormalization())
+
+    model.add(Flatten())
+    model.add(Dense(128, activation='relu'))
+    model.add(Dropout(0.3))
+    model.add(Dense(64, activation='relu'))
+    model.add(Dropout(0.3))
+    model.add(Dense(2, activation='sigmoid'))
+    return model
+
+def conv1d_model(window_size):
+    model = keras.Sequential()
+    model.add(Conv1D(filters=32, 
+                     kernel_size=5, 
+                     activation='relu', 
+                     input_shape=(window_size, 3))) 
+    model.add(MaxPooling1D(pool_size=2))
+    model.add(BatchNormalization())
+    model.add(Conv1D(filters=64, 
+                     kernel_size=3, 
+                     activation='relu')) 
+    model.add(BatchNormalization())
+    model.add(Flatten())
+    model.add(Dense(2, activation='sigmoid'))
+    return model
+
+def lstm_build_deep(window_size):
+    model = keras.Sequential()
+    model.add(LSTM(32, return_sequences=True, input_shape=(window_size, 3))) 
+    model.add(BatchNormalization())
+
+    model.add(LSTM(64, return_sequences=True)) 
+    model.add(BatchNormalization())
+
+    model.add(LSTM(64)) 
+    model.add(BatchNormalization())
+
+    model.add(Dense(128, activation='relu'))
+    model.add(Dropout(0.3))
+    model.add(Dense(64, activation='relu'))
+    model.add(Dropout(0.3))
+    model.add(Dense(2, activation='sigmoid'))
+    return model
+
+
+def lstm_model_basic(window_size):
+    model = keras.Sequential()
+    model.add(LSTM(32, return_sequences=True, input_shape=(window_size, 3)))
+    model.add(BatchNormalization())
+    model.add(LSTM(64)) 
+    model.add(Dense(2, activation='sigmoid'))
+    return model
+
+
+def conv2d_model(): #working done
+        model = keras.Sequential()
+        model.add(Conv2D(filters=32, 
+                                 kernel_size=(5,5), 
+                                 activation='relu', 
+                                 input_shape=(60, 180, 1))) 
+        model.add(MaxPooling2D(pool_size=(2,2)))
+        model.add(BatchNormalization())
+        model.add(Conv2D(filters=64, 
+                                 kernel_size=(3,3), 
+                                 activation='relu')) 
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(BatchNormalization())
+        model.add(Flatten())
+        model.add(Dense(2, activation='sigmoid'))
+        return model
+
+def conv2d_build_deep():
+    model = keras.Sequential()
+    model.add(Conv2D(filters=32, 
+                     kernel_size=(7,7), 
+                     activation='relu', 
+                     input_shape=(60, 180, 1))) 
+    model.add(MaxPooling2D(pool_size=(2,2), padding='same'))
+    model.add(BatchNormalization())
+
+    model.add(Conv2D(filters=64, 
+                     kernel_size=(5,5), 
+                     activation='relu')) 
+    model.add(MaxPooling2D(pool_size=(2, 2), padding='same'))
+    model.add(BatchNormalization())
+
+    model.add(Conv2D(filters=64,
+                     kernel_size=(3,3), 
+                     activation='relu')) 
+    model.add(MaxPooling2D(pool_size=(2, 2), padding='same'))
+    model.add(BatchNormalization())
+
+    model.add(Flatten())
+    model.add(Dense(128, activation='relu'))
+    model.add(Dropout(0.3))
+    model.add(Dense(64, activation='relu'))
+    model.add(Dropout(0.3))
+    model.add(Dense(2, activation='sigmoid'))
+    return model
+
 def build_basic(func, shape, classes, dense_activation):
         model = keras.Sequential()
         model.add(ConvLSTM2D(filters=32, 
@@ -48,7 +166,7 @@ def build_deep(func, shape, classes, dense_activation):
         model.add(MaxPooling3D(pool_size=(1, 1, 2), padding='same', data_format='channels_last'))
         model.add(BatchNormalization())
     
-        model.add(ConvLSTM2D(filters=64, 
+        model.add(ConvLSTM2D(filters=64,
                                  kernel_size=(3,3), 
                                  activation=func, 
                                  data_format='channels_last',

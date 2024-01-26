@@ -3,6 +3,118 @@ from keras.layers import *
 import numpy as np
 import tensorflow as tf
 
+
+def build_deep_conv3d(shape):
+        model = keras.Sequential()
+        model.add(Conv3D(filters=32, 
+                     kernel_size=(7, 7, 7), 
+                     activation='relu', 
+                     data_format='channels_last',
+                     input_shape=(shape[0], shape[1], shape[2], 1)))
+        model.add(BatchNormalization())
+        model.add(MaxPooling3D(pool_size=(1,1,2), padding='same', data_format='channels_last'))
+        model.add(Conv3D(filters=64, 
+                     kernel_size=(5, 5, 5), 
+                     activation='relu', 
+                     data_format='channels_last'))
+        model.add(MaxPooling3D(pool_size=(1, 1, 2), padding='same', data_format='channels_last'))
+        model.add(BatchNormalization())
+    
+        model.add(Conv3D(filters=64, 
+                     kernel_size=(3, 3, 3), 
+                     activation='relu', 
+                     data_format='channels_last')) 
+        model.add(MaxPooling3D(pool_size=(1, 1, 2), padding='same', data_format='channels_last'))
+        model.add(BatchNormalization())
+    
+        model.add(Flatten())
+        model.add(Dense(128, activation="relu"))
+        model.add(Dropout(0.3))
+        model.add(Dense(64, activation="relu"))
+        model.add(Dropout(0.3))
+        model.add(Dense(2, activation='sigmoid'))
+        return model
+
+def conv3d_model(shape):
+    model = keras.Sequential()
+    model.add(Conv3D(filters=32, 
+                     kernel_size=(5, 5, 5), 
+                     activation='relu', 
+                     data_format='channels_last',
+                     input_shape=(shape[0], shape[1], shape[2], 1))) 
+    model.add(MaxPooling3D(pool_size=(1, 1, 2)))
+    model.add(BatchNormalization())
+    model.add(Conv3D(filters=64, 
+                     kernel_size=(3, 3, 3), 
+                     activation='relu', 
+                     data_format='channels_last'))
+    model.add(BatchNormalization())
+    model.add(Flatten())
+    model.add(Dense(2, activation='sigmoid'))
+    return model
+
+
+def build_deep_ConvLSTM1D(window_size):
+        model = keras.Sequential()
+        model.add(ConvLSTM1D(filters=32, 
+                         kernel_size=5, 
+                         activation='relu',
+                         data_format='channels_last',
+                         dropout=0.2, 
+                         input_shape=(1 , window_size, 3), 
+                         return_sequences=True)) 
+        model.add(MaxPooling2D(pool_size=(1,2), padding="same", data_format='channels_last'))
+        model.add(BatchNormalization())
+    
+        model.add(ConvLSTM1D(filters=64, 
+                                 kernel_size=3, 
+                                 activation="relu", 
+                                 data_format='channels_last',
+                                 dropout=0.2, 
+                                 return_sequences=True)) 
+        model.add(MaxPooling2D(pool_size=(1,2), padding="same", data_format='channels_last'))
+        model.add(BatchNormalization())
+    
+        model.add(ConvLSTM1D(filters=64,
+                                 kernel_size=1, 
+                                 activation="relu", 
+                                 data_format='channels_last',
+                                 dropout=0.2, 
+                                 return_sequences=True)) 
+        model.add(MaxPooling2D(pool_size=(1, 2), padding='same', data_format='channels_last'))
+        model.add(BatchNormalization())
+    
+        model.add(Flatten())
+        model.add(Dense(128, activation="relu"))
+        model.add(Dropout(0.3))
+        model.add(Dense(64, activation="relu"))
+        model.add(Dropout(0.3))
+        model.add(Dense(2, activation="sigmoid"))
+        return model
+
+
+def basic_ConvLSTN1D(window_size):
+    model = keras.Sequential()
+    model.add(ConvLSTM1D(filters=32, 
+                         kernel_size=5, 
+                         activation='relu',
+                         data_format='channels_last',
+                         dropout=0.2, 
+                         input_shape=(1 , window_size, 3), 
+                         return_sequences=True)) 
+    model.add(MaxPooling2D(pool_size=(1,2), padding="same"))
+    model.add(BatchNormalization())
+    model.add(ConvLSTM1D(filters=64, 
+                         kernel_size=3, 
+                         activation='relu', 
+                         return_sequences=True)) 
+    model.add(MaxPooling2D(pool_size=(1,2), padding="same"))
+    model.add(BatchNormalization())
+    model.add(Flatten())
+    model.add(Dense(2, activation='sigmoid'))
+    return model
+
+
 def conv1d_build_deep(window_size):
     model = keras.Sequential()
     model.add(Conv1D(filters=32, 

@@ -17,7 +17,7 @@ from sklearn.preprocessing import StandardScaler
 
 from m_package.models.CE_GAN import build_generator, build_discriminator, GAN, class_expert_model
 from m_package.models.CE_GAN_LSTM import build_generator_lstm, build_discriminator_lstm, class_expert_model_lstm
-from m_package.models.Conv_LSTM_grad import build_basic, build_deep, ConvLSTM, conv2d_model, conv2d_build_deep, conv1d_build_deep, conv1d_model, lstm_build_deep, lstm_model_basic
+from m_package.models.Conv_LSTM_grad import build_basic, build_deep, ConvLSTM, conv2d_model, conv2d_build_deep, conv1d_build_deep, conv1d_model, lstm_build_deep, lstm_model_basic, build_deep_ConvLSTM1D, basic_ConvLSTN1D, build_deep_conv3d, conv3d_model
 from m_package.models.ResNet import Resnet, Resnet_LSTM, Resnet_Conv2D
 from m_package.data.creartion import DyslexiaVizualization, img_dataset_creation, window_dataset_creation
 from m_package.common.metrics_multi import metrics_per_fold, resulting
@@ -87,7 +87,8 @@ if __name__ == "__main__":
         "--type_name", type=str, default="conv",
         help="type_name"
             "conv is for convolutional type"
-            "lstm is for convlstm type"
+            "lstm is for lstm type"
+            "convlstm is for convlstm layer"
     )
 
     args = parser.parse_args()
@@ -409,18 +410,25 @@ if __name__ == "__main__":
                 dataset_name = "Fixation_cutted_binary.csv"
                 X_data, y_data = window_dataset_creation(n_steps, path, dataset_name)
 
-                train_dataset, val_dataset, test_dataset = split_data(X_data, y_data) 
-
                 if model_name == "conv_grad":
                     if type_name == "conv":
                         model = conv1d_model(n_steps)
                     elif type_name == "lstm":
                         model = lstm_model_basic(n_steps)
+                    elif type_name == "convlstm":
+                        model = basic_ConvLSTN1D(n_steps)
+                        X_data = X_data.reshape((X_data.shape[0], 1, X_data.shape[1], 3))
+                        print(X_data.shape)
                 elif model_name == "conv_grad_deep":
                     if type_name == "conv":
                         model = conv1d_build_deep(n_steps)
                     elif type_name == "lstm":
                         model = lstm_build_deep(n_steps)
+                    elif type_name == "convlstm":
+                        model = build_deep_ConvLSTM1D(n_steps)
+                        X_data = X_data.reshape((X_data.shape[0], 1, X_data.shape[1], 3))
+
+                train_dataset, val_dataset, test_dataset = split_data(X_data, y_data) 
 
                 model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
                 history = model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
@@ -432,24 +440,44 @@ if __name__ == "__main__":
                 plot_loss(history.history['loss'], path, model_name_save)
                 
             else:
-                train_dataset, val_dataset, test_dataset = split_data(X_data, y_data) 
-                #build and train model on huge number of epochs
-                optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4)
-                loss_fn, train_metric, val_metric, model = build(num_classes, model_name)
+                if type_name == "conv":
+                    if model_name == "conv_grad":
+                        model = conv3d_model(size)
+                    elif model_name == "conv_grad_deep":
+                        model = build_deep_conv3d(size)
+                    print("for report")
+                    print(X_data.shape)
 
-                conv_model = ConvLSTM(model, optimizer, loss_fn, train_metric, val_metric)
-                conv_model.fit(epoch_num, train_dataset, val_dataset)
+                    train_dataset, val_dataset, test_dataset = split_data(X_data, y_data) 
 
-                path = "Figures"
+                    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+                    history = model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
 
-                loss = conv_model.loss_per_training
-                valid_auc_ = conv_model.valid_auc
-                train_auc_ = conv_model.training_auc
+                    path = "Figures"
+                    model_name_save = f"{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}_for_report"
 
-                model_name_save = f"{epoch_num}{data_name}_{model_name}_{num_classes}"
+                    plot_history(history.history['loss'], history.history['val_auc'], history.history['auc'], path, model_name_save, history.history['val_loss'])
+                    plot_loss(history.history['loss'], path, model_name_save)
+                    
+                else:
+                    train_dataset, val_dataset, test_dataset = split_data(X_data, y_data) 
+                    #build and train model on huge number of epochs
+                    optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4)
+                    loss_fn, train_metric, val_metric, model = build(num_classes, model_name)
 
-                plot_history(loss, valid_auc_, train_auc_, path, model_name_save)
-                plot_loss(loss, path, model_name_save)
+                    conv_model = ConvLSTM(model, optimizer, loss_fn, train_metric, val_metric)
+                    conv_model.fit(epoch_num, train_dataset, val_dataset)
+
+                    path = "Figures"
+
+                    loss = conv_model.loss_per_training
+                    valid_auc_ = conv_model.valid_auc
+                    train_auc_ = conv_model.training_auc
+
+                    model_name_save = f"{epoch_num}{data_name}_{model_name}_{num_classes}"
+
+                    plot_history(loss, valid_auc_, train_auc_, path, model_name_save)
+                    plot_loss(loss, path, model_name_save)
 
             
         elif run == 2: #running the model for k times (k == 5) (done)
@@ -481,40 +509,62 @@ if __name__ == "__main__":
                     dataset_name = "Fixation_cutted_binary.csv"
                     X_data, y_data = window_dataset_creation(n_steps, path, dataset_name)
 
-                    train_dataset, val_dataset, test_dataset = split_data(X_data, y_data) 
 
                     if model_name == "conv_grad":
                         if type_name == "conv":
                             model = conv1d_model(n_steps)
                         elif type_name == "lstm":
                             model = lstm_model_basic(n_steps)
+                        elif type_name == "convlstm":
+                            model = basic_ConvLSTN1D(n_steps)
+                            X_data = X_data.reshape((X_data.shape[0], 1, X_data.shape[1], 3))
                     elif model_name == "conv_grad_deep":
                         if type_name == "conv":
                             model = conv1d_build_deep(n_steps)
                         elif type_name == "lstm":
                             model = lstm_build_deep(n_steps)
+                        elif type_name == "convlstm":
+                            model = build_deep_ConvLSTM1D(n_steps)
+                            X_data = X_data.reshape((X_data.shape[0], 1, X_data.shape[1], 3))
 
+                    train_dataset, val_dataset, test_dataset = split_data(X_data, y_data) 
+                        
                     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
                     model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
                     metrics_results = metrics_per_fold_binary(model, test_dataset, metrics_results)
 
                 else:
-                    train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
+                    if type_name == "conv":
+                        if model_name == "conv_grad":
+                            model = conv3d_model(size)
+                        elif model_name == "conv_grad_deep":
+                            model = build_deep_conv3d(size)
+                        print("for report")
+                        print(X_data.shape)
 
-                    #build and train model on huge number of epochs
-                    optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4)
-                    loss_fn, train_metric, val_metric, model = build(num_classes, model_name)
-
-                    conv_model = ConvLSTM(model, optimizer, loss_fn, train_metric, val_metric)
-                    conv_model.fit(epoch_num, train_dataset, val_dataset)
-
-                    model = conv_model.ret() 
-
-                    #calc metrics 
-                    if num_classes == 3:
-                        metrics_results = metrics_per_fold(model, test_dataset, metrics_results)
-                    elif num_classes == 2:
+                        train_dataset, val_dataset, test_dataset = split_data(X_data, y_data) 
+                        
+                        model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+                        model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
                         metrics_results = metrics_per_fold_binary(model, test_dataset, metrics_results)
+
+                    else:
+                        train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
+
+                        #build and train model on huge number of epochs
+                        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4)
+                        loss_fn, train_metric, val_metric, model = build(num_classes, model_name)
+
+                        conv_model = ConvLSTM(model, optimizer, loss_fn, train_metric, val_metric)
+                        conv_model.fit(epoch_num, train_dataset, val_dataset)
+
+                        model = conv_model.ret() 
+
+                        #calc metrics 
+                        if num_classes == 3:
+                            metrics_results = metrics_per_fold(model, test_dataset, metrics_results)
+                        elif num_classes == 2:
+                            metrics_results = metrics_per_fold_binary(model, test_dataset, metrics_results)
                 
 
             #calc and save results per all folds
@@ -651,8 +701,8 @@ if __name__ == "__main__":
             conf_matrix(ce_model, test_dataset, f"model_{model_name_save}")
     
     elif model_name == "sklearn" and num_classes == 2 and data_name[:4] == '_hog': #basic models with extracted features
-        models = [svm.NuSVC(), svm.SVC(), MLPClassifier(), RandomForestClassifier()] #run without svm/split them
-        model_type_sk = ["nu_svm", "svm", "mlp", "rf"]
+        models = [MLPClassifier(), RandomForestClassifier()] #run without svm/split them
+        model_type_sk = ["mlp", "rf"]
         #tune the hog data hog_dataset(X, y, pixels_cell, cell_block):
         for pixels_cell in range(1,4):
             for cell_block in range(1,2):
@@ -668,7 +718,7 @@ if __name__ == "__main__":
                 X_train_t, X_val, y_train_t, y_val = train_test_split(X_f_h_concated, y, test_size=0.5, stratify=y) 
                 #train for tuning with skopt, val for kfold validation
                 #tuning and validating models
-                for i in range(4):
+                for i in range(len(model_type_sk)):
                     tune_best = model_tuning(X_train_t, y_train_t, model_type_sk[i]) #best params
 
                     metrics_results = {

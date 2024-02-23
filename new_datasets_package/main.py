@@ -291,7 +291,7 @@ if __name__ == "__main__":
                 max_trials=num_trials,
                 num_initial_points=num_points,
                 overwrite=True,
-                directory='tuning dir',
+                directory='tuning_dir',
                 project_name=proj_name)
             
             tuner.search(train_dataset, epochs=num_tune_epochs, validation_data=val_dataset)

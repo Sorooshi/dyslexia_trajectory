@@ -355,7 +355,7 @@ if __name__ == "__main__":
         }
 
         gbc = GradientBoostingClassifier()
-        bayes_search = BayesSearchCV(gbc, param_space, n_iter=2, cv=5, n_jobs=1)
+        bayes_search = BayesSearchCV(gbc, param_space, cv=5, n_jobs=5)
 
         np.int = int
         bayes_search.fit(X_train_t, y_train_t)

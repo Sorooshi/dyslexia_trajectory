@@ -1,23 +1,25 @@
 import argparse
-import pickle
 import os
-import keras
 from pathlib import Path
+import pickle
 
-import tensorflow as tf
 import numpy as np
-
-from sklearn.model_selection import KFold
-from sklearn.model_selection import train_test_split
-from kerastuner.tuners import BayesianOptimization
-from skopt import BayesSearchCV
-from skopt.space import Real, Categorical, Integer
-from sklearn.ensemble import GradientBoostingClassifier
+import tensorflow as tf
+import keras
+from keras.layers import Dense, GlobalAveragePooling2D
+from keras.models import Model
+from keras.applications import ResNet50, VGG16, InceptionV3
+from keras_tuner.tuners import BayesianOptimization
 import keras_tuner as kt
 
+from sklearn.model_selection import KFold, train_test_split
+from skopt import BayesSearchCV
+from skopt.space import Real, Categorical, Integer
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+
 from m_package.data.creartion import DyslexiaVizualization, img_dataset_creation, window_dataset_creation
-from m_package.models.basic import conv_2d_basic, lstm_2d_basic, convlstm_3d_basic_huddled, convlstm_3d_basic, conv3d_basic, conv3d_basic_huddled
-from m_package.models.deep import conv_2d_deep, lstm_2d_deep, conv3d_deep, conv3d_deep_huddled, convlstm_3d_deep, convlstm_3d_deep_huddled
+from m_package.models.basic import conv_2d_basic, lstm_1d_basic, convlstm_3d_basic_huddled, convlstm_3d_basic, conv3d_basic, conv3d_basic_huddled, convlstm_1d_basic
+from m_package.models.deep import conv_2d_deep, lstm_1d_deep, conv3d_deep, conv3d_deep_huddled, convlstm_3d_deep, convlstm_3d_deep_huddled, convlstm_1d_deep
 from m_package.common.utils import plot_history, conf_matrix
 from m_package.common.metrics_binary import metrics_per_fold_binary, resulting_binary, linear_per_fold
 
@@ -102,6 +104,10 @@ if __name__ == "__main__":
             "basic is for basic neural network"
             "deep is for deeper neural network"
             "gbc for GradientBoostingClassifier"
+            "rf for RandomForestClassifier"
+            "resnet is for pretrained ResNet50"
+            "vgg is for pretrained VGG16"
+            "inception is for pretrained InceptionV3"
     )
 
     parser.add_argument(
@@ -117,6 +123,7 @@ if __name__ == "__main__":
             "conv is for convolutional type"
             "lstm is for lstm type"
             "convlstm is for convlstm type"
+            "pretrained is for pretrained models"
     )
 
     args = parser.parse_args()
@@ -254,7 +261,7 @@ if __name__ == "__main__":
         else:
             print("CPU")
 
-
+    # from scratch models
     if model_name == "basic" or model_name == "deep":
         if data_rep == "3D":
             if model_name == "basic":
@@ -285,10 +292,16 @@ if __name__ == "__main__":
             elif model_name == "deep":
                 model_build_func = conv_2d_deep
         elif data_rep == "1D":
-            if model_name == "basic":
-                model_build_func = lstm_2d_basic
-            elif model_name == "deep":
-                model_build_func = lstm_2d_deep
+            if type_name == "lstm":
+                if model_name == "basic":
+                    model_build_func = lstm_1d_basic
+                elif model_name == "deep":
+                    model_build_func = lstm_1d_deep
+            elif type_name == "convlstm":
+                if model_name == "basic":
+                    model_build_func = convlstm_1d_basic
+                elif model_name == "deep":
+                    model_build_func = convlstm_1d_deep
         proj_name = f'{data_rep}{data_name}_{model_name}_{type_name}'
         model_name_save = f"{data_rep}_{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}"
         if run == 1:
@@ -350,27 +363,38 @@ if __name__ == "__main__":
 
             conf_matrix(model, test_dataset, f"model_{model_name_save}")
 
-    elif model_name == "gbc":
+    elif model_name == "gbc" or model_name == "rf":
         X_reshaped = X_data.reshape(X_data.shape[0], -1)
         y_data = np.argmax(y_data, axis=1)
         X_train_t, X_val, y_train_t, y_val = train_test_split(X_reshaped, y_data, test_size=0.65, stratify=y_data) 
 
-        print("Tuning has begun")
-        param_space = {
-            'n_estimators': Integer(100, 1000),
-            'learning_rate': Real(0.01, 1.0, prior='log-uniform'),
-            'max_depth': Integer(3, 10),
-        }
+        if model_name == "gbc":
+            param_space = {
+                'n_estimators': Integer(100, 1000),
+                'learning_rate': Real(0.01, 1.0, prior='log-uniform'),
+                'max_depth': Integer(3, 10),
+            }
 
-        gbc = GradientBoostingClassifier()
-        bayes_search = BayesSearchCV(gbc, param_space, n_iter=2, cv=5, n_jobs=1)
+            model = GradientBoostingClassifier()
+        elif model_name == "rf":
+            param_space = {
+                'n_estimators': Integer(2000, 50000),
+                'max_depth': Integer(2, 20),
+                'min_samples_split': Integer(2, 50),
+                'min_samples_leaf': Integer(1, 50)
+            }
+
+            model = RandomForestClassifier()
+
+        print("Tuning has begun")
+        bayes_search = BayesSearchCV(model, param_space, n_iter=100, cv=5, n_jobs=5)
 
         np.int = int
         bayes_search.fit(X_train_t, y_train_t)
 
         best_estimator = bayes_search.best_estimator_
         best_params = bayes_search.best_params_
-        print("Best parameters found:")
+        print(f"Best parameters found for {model_name}:")
         print(best_params)
 
         metrics_results = {
@@ -394,3 +418,67 @@ if __name__ == "__main__":
 
         final_results = resulting_binary(metrics_results)
         print(final_results)
+    
+    #pretrained models
+    if type_name == "pretrained":
+        print("in pr")
+        X_data = np.repeat(X_data[..., np.newaxis], 3, -1)
+        if model_name == "resnet":
+            base_model = ResNet50(weights='imagenet', include_top=False, input_shape=(60, 180, 3))
+        elif model_name == "vgg":
+            base_model = VGG16(weights='imagenet', include_top=False, input_shape=(60, 180, 3))
+        
+        if run == 1: #tune number of epochs
+            train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
+
+            x = base_model.output
+            x = GlobalAveragePooling2D()(x)
+            x = Dense(256, activation='relu')(x)
+            predictions = Dense(2, activation='sigmoid')(x)  
+
+            model = Model(inputs=base_model.input, outputs=predictions)
+
+            for layer in base_model.layers:
+                layer.trainable = False
+
+            model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+
+            history = model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
+            path = "Figures"
+            model_name_save = f"{type_name}_{model_name}{data_name}_{epoch_num}"
+            plot_history(history.history['loss'], history.history['val_auc'], history.history['auc'], path, model_name_save, history.history['val_loss'])
+
+        elif run == 2:
+            metrics_results = {
+                "auc_roc" : [],
+                "accuracy" : [],
+                "precision": [],
+                "recall": [],
+                "f1": []
+            }
+
+            for _ in range(5):
+                train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
+
+                x = base_model.output
+                x = GlobalAveragePooling2D()(x)
+                x = Dense(256, activation='relu')(x)
+                predictions = Dense(2, activation='sigmoid')(x)  
+
+                model = Model(inputs=base_model.input, outputs=predictions)
+
+                for layer in base_model.layers:
+                    layer.trainable = False
+
+                model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+                model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
+
+                #calc metrics 
+                metrics_results = metrics_per_fold_binary(model, test_dataset, metrics_results)
+
+            final_results = resulting_binary(metrics_results)
+            print(f"RESULTS: for {model_name}\n")
+            print(final_results)
+            
+            conf_matrix(model, test_dataset, f"model_{model_name_save}")
+

@@ -16,8 +16,8 @@ from sklearn.ensemble import GradientBoostingClassifier
 import keras_tuner as kt
 
 from m_package.data.creartion import DyslexiaVizualization, img_dataset_creation, window_dataset_creation
-from m_package.models.basic import conv_2d_basic, lstm_2d_basic, model_convlstm_3d_basic_huddled, model_convlstm_3d_basic
-from m_package.models.deep import conv_2d_deep, lstm_2d_deep
+from m_package.models.basic import conv_2d_basic, lstm_2d_basic, convlstm_3d_basic_huddled, convlstm_3d_basic, conv3d_basic, conv3d_basic_huddled
+from m_package.models.deep import conv_2d_deep, lstm_2d_deep, conv3d_deep, conv3d_deep_huddled, convlstm_3d_deep, convlstm_3d_deep_huddled
 from m_package.common.utils import plot_history, conf_matrix
 from m_package.common.metrics_binary import metrics_per_fold_binary, resulting_binary, linear_per_fold
 
@@ -259,21 +259,26 @@ if __name__ == "__main__":
         if data_rep == "3D":
             if model_name == "basic":
                 if type_name == "conv":
-                    pass
-                elif type_name == "lstm":
-                    pass
+                    if data_name == "_huddled":
+                        model_build_func = conv3d_basic_huddled
+                    else:
+                        model_build_func = conv3d_basic
                 elif type_name == "convlstm":
                     if data_name == "_huddled":
-                        model_build_func = model_convlstm_3d_basic_huddled
+                        model_build_func = convlstm_3d_basic_huddled
                     else:
-                        model_build_func = model_convlstm_3d_basic
+                        model_build_func = convlstm_3d_basic
             elif model_name == "deep":
                 if type_name == "conv":
-                    pass
-                elif type_name == "lstm":
-                    pass
+                    if data_name == "_huddled":
+                        model_build_func = conv3d_deep_huddled
+                    else:
+                        model_build_func = conv3d_deep
                 elif type_name == "convlstm":
-                    pass
+                    if data_name == "_huddled":
+                        model_build_func = convlstm_3d_deep_huddled
+                    else:
+                        model_build_func = convlstm_3d_deep
         elif data_rep == "2D":
             if model_name == "basic":
                 model_build_func = conv_2d_basic

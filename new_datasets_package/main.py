@@ -16,7 +16,7 @@ from sklearn.ensemble import GradientBoostingClassifier
 import keras_tuner as kt
 
 from m_package.data.creartion import DyslexiaVizualization, img_dataset_creation, window_dataset_creation
-from m_package.models.basic import conv_2d_basic, lstm_2d_basic
+from m_package.models.basic import conv_2d_basic, lstm_2d_basic, model_convlstm_3d_basic_huddled, model_convlstm_3d_basic
 from m_package.models.deep import conv_2d_deep, lstm_2d_deep
 from m_package.common.utils import plot_history, conf_matrix
 from m_package.common.metrics_binary import metrics_per_fold_binary, resulting_binary, linear_per_fold
@@ -263,7 +263,10 @@ if __name__ == "__main__":
                 elif type_name == "lstm":
                     pass
                 elif type_name == "convlstm":
-                    pass
+                    if data_name == "_huddled":
+                        model_build_func = model_convlstm_3d_basic_huddled
+                    else:
+                        model_build_func = model_convlstm_3d_basic
             elif model_name == "deep":
                 if type_name == "conv":
                     pass
@@ -355,7 +358,7 @@ if __name__ == "__main__":
         }
 
         gbc = GradientBoostingClassifier()
-        bayes_search = BayesSearchCV(gbc, param_space, cv=5, n_jobs=5)
+        bayes_search = BayesSearchCV(gbc, param_space, n_iter=2, cv=5, n_jobs=1)
 
         np.int = int
         bayes_search.fit(X_train_t, y_train_t)

@@ -18,8 +18,9 @@ from skopt.space import Real, Categorical, Integer
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 
 from m_package.data.creartion import DyslexiaVizualization, img_dataset_creation, window_dataset_creation
-from m_package.models.basic import conv_2d_basic, lstm_1d_basic, convlstm_3d_basic_huddled, convlstm_3d_basic, conv3d_basic, conv3d_basic_huddled, convlstm_1d_basic
-from m_package.models.deep import conv_2d_deep, lstm_1d_deep, conv3d_deep, conv3d_deep_huddled, convlstm_3d_deep, convlstm_3d_deep_huddled, convlstm_1d_deep
+from m_package.models.basic import conv_2d_basic, lstm_1d_basic, convlstm_3d_basic_huddled, convlstm_3d_basic, conv3d_basic, conv3d_basic_huddled, convlstm_1d_basic, conv_1d_basic
+from m_package.models.deep import conv_2d_deep, lstm_1d_deep, conv3d_deep, conv3d_deep_huddled, convlstm_3d_deep, convlstm_3d_deep_huddled, convlstm_1d_deep, conv_1d_deep
+from m_package.models.sitted import sitted_deep_ConvLSTM1D, sitted_basic_ConvLSTM1D, sitted_basic_ConvLSTM3D, sitted_deep_ConvLSTM3D
 from m_package.common.utils import plot_history, conf_matrix
 from m_package.common.metrics_binary import metrics_per_fold_binary, resulting_binary, linear_per_fold
 
@@ -108,6 +109,8 @@ if __name__ == "__main__":
             "resnet is for pretrained ResNet50"
             "vgg is for pretrained VGG16"
             "inception is for pretrained InceptionV3"
+            "sitted_basic for baby sitted basic models"
+            "sitted_deep for baby sitted deep models" 
     )
 
     parser.add_argument(
@@ -300,8 +303,14 @@ if __name__ == "__main__":
             elif type_name == "convlstm":
                 if model_name == "basic":
                     model_build_func = convlstm_1d_basic
+                    print(X_data.shape)
                 elif model_name == "deep":
                     model_build_func = convlstm_1d_deep
+            elif type_name == "conv":
+                if model_name == "basic":
+                    model_build_func = conv_1d_basic
+                elif model_name == "deep":
+                    model_build_func = conv_1d_deep
         proj_name = f'{data_rep}{data_name}_{model_name}_{type_name}'
         model_name_save = f"{data_rep}_{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}"
         if run == 1:
@@ -479,6 +488,51 @@ if __name__ == "__main__":
             final_results = resulting_binary(metrics_results)
             print(f"RESULTS: for {model_name}\n")
             print(final_results)
-            
+            model_name_save = f"{data_rep}_{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}"
             conf_matrix(model, test_dataset, f"model_{model_name_save}")
+
+    if model_name == "sitted_basic" or model_name == "sitted_deep":
+        if data_rep == "1D":
+            if type_name == "convlstm":
+                if model_name == "sitted_basic":
+                    model = sitted_basic_ConvLSTM1D()
+                elif model_name == "sitted_deep":
+                    model = sitted_deep_ConvLSTM1D()
+        elif data_rep == "3D":
+            if type_name == "convlstm":
+                if model_name == "sitted_basic":
+                    model = sitted_basic_ConvLSTM3D(size)
+                elif model_name == "sitted_deep":
+                    model = sitted_deep_ConvLSTM3D(size)
+        
+        if run == 1:
+            train_dataset, val_dataset, test_dataset = split_data(X_data, y_data) 
+            model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+            history = model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
+
+            path = "Figures"
+
+            plot_history(history.history['loss'], history.history['val_auc'], history.history['auc'], path, f"{data_rep}_{epoch_num}{data_name}_{model_name}_{type_name}", history.history['val_loss'])
+        elif run == 2:
+            metrics_results = {
+                "auc_roc" : [],
+                "accuracy" : [],
+                "precision": [],
+                "recall": [],
+                "f1": []
+            }
+
+            for _ in range(5):
+                train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
+                model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+                model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
+
+                metrics_results = metrics_per_fold_binary(model, test_dataset, metrics_results)
+                print(metrics_results)
+
+            final_results = resulting_binary(metrics_results)
+            print(final_results)
+            
+            #saving conf_matrix
+            conf_matrix(model, test_dataset, f"{data_rep}_{epoch_num}{data_name}_{model_name}_{type_name}")
 

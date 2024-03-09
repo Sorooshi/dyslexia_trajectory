@@ -627,8 +627,8 @@ if __name__ == "__main__":
         noise_shape = 128
         dense_image_shape = np.prod(X_data[0].shape)
         image_shape = X_data[0].shape
-        #train_dataset = GAN_data()
-        train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
+        train_dataset = GAN_data()
+        #train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
         print(image_shape)
 
         #vers1

@@ -24,7 +24,8 @@ from m_package.data.creartion import DyslexiaVizualization, img_dataset_creation
 from m_package.models.basic import conv_2d_basic, lstm_1d_basic, convlstm_3d_basic_huddled, convlstm_3d_basic, conv3d_basic, conv3d_basic_huddled, convlstm_1d_basic, conv_1d_basic
 from m_package.models.deep import conv_2d_deep, lstm_1d_deep, conv3d_deep, conv3d_deep_huddled, convlstm_3d_deep, convlstm_3d_deep_huddled, convlstm_1d_deep, conv_1d_deep
 from m_package.models.sitted import sitted_deep_ConvLSTM1D, sitted_basic_ConvLSTM1D, sitted_basic_ConvLSTM3D, sitted_deep_ConvLSTM3D
-from m_package.common.utils import plot_history, conf_matrix
+from m_package.models.GAN import GAN, build_discriminator, build_generator_ver1, build_generator_ver2
+from m_package.common.utils import plot_history, conf_matrix, GAN_plot, save_model
 from m_package.common.metrics_binary import metrics_per_fold_binary, resulting_binary, linear_per_fold
 
 
@@ -89,6 +90,15 @@ def hog_dataset(X, y, pixels_cell, cell_block):
     return np.array(X_hog), np.array(X_features_hog), y
 
 
+def GAN_data():
+    X_dys, y_dys = img_dataset_creation(path="Datasets", dataset_name="Fixation_cutted_binary_dys.csv")
+    y_dys = np.argmax(y_dys, axis=1)
+    train_dataset = tf.data.Dataset.from_tensor_slices((X_dys, y_dys))
+    train_dataset_dys = train_dataset.shuffle(buffer_size=len(X_dys)).batch(batch_size)
+
+    return train_dataset_dys
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -132,6 +142,7 @@ if __name__ == "__main__":
             "inception is for pretrained InceptionV3"
             "sitted_basic for baby sitted basic models"
             "sitted_deep for baby sitted deep models" 
+            "gan for generative gan (both versions)"
     )
 
     parser.add_argument(
@@ -148,6 +159,7 @@ if __name__ == "__main__":
             "lstm is for lstm type"
             "convlstm is for convlstm type"
             "pretrained is for pretrained models"
+            "ver1/ver2 for GAN versions of generator"
     )
 
     args = parser.parse_args()
@@ -450,7 +462,7 @@ if __name__ == "__main__":
                 X_train , X_test = X_val[train_index], X_val[test_index]
                 y_train , y_test = y_val[train_index] , y_val[test_index]
 
-                model_best = GradientBoostingClassifier().set_params(**best_params)
+                model_best = model.set_params(**best_params)
                 model_best.fit(X_train,y_train)
                 pred_values = model_best.predict(X_test)
                 pred_proba = model_best.predict_proba(X_test)[:, 1]
@@ -491,7 +503,7 @@ if __name__ == "__main__":
                         X_train , X_test = X_val[train_index], X_val[test_index]
                         y_train , y_test = y_val[train_index] , y_val[test_index]
 
-                        model_best = GradientBoostingClassifier().set_params(**best_params)
+                        model_best = model.set_params(**best_params)
                         model_best.fit(X_train,y_train)
                         pred_values = model_best.predict(X_test)
                         pred_proba = model_best.predict_proba(X_test)[:, 1]
@@ -501,7 +513,6 @@ if __name__ == "__main__":
                     print(f"Results for {model_name} \n Best params: {best_params} \n Pixels per cell: {pixels_cell} \t Cells per block: {cell_block}")
                     print(f"Dict with Results: {final_results}")
                     print("Start another tuning \n")
-
 
     #pretrained models
     if type_name == "pretrained":
@@ -610,3 +621,34 @@ if __name__ == "__main__":
             
             #saving conf_matrix
             conf_matrix(model, test_dataset, f"{data_rep}_{epoch_num}{data_name}_{model_name}_{type_name}")
+
+    if model_name == "gan":
+        #dyslexia
+        noise_shape = 128
+        dense_image_shape = np.prod(X_data[0].shape)
+        image_shape = X_data[0].shape
+        #train_dataset = GAN_data()
+        train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
+        print(image_shape)
+
+        #vers1
+        if type_name == "ver1":
+            generator = build_generator_ver1(dense_image_shape, image_shape)
+        elif type_name == "ver2":
+            generator = build_generator_ver2()
+
+        discriminator = build_discriminator(image_shape)
+        gan = GAN(generator, discriminator, batch_size)
+
+        g_opt = keras.optimizers.SGD(0.001)
+        d_opt = keras.optimizers.SGD(0.001)
+        g_loss=tf.keras.losses.BinaryCrossentropy()
+        d_loss=tf.keras.losses.BinaryCrossentropy()
+
+        gan.compile(g_opt, d_opt, g_loss, d_loss)
+        hist = gan.fit(train_dataset, epochs=epoch_num)
+
+        model_name_save_n = f"{type_name}_gan_model_{epoch_num}"
+        path = "Figures"
+        GAN_plot(hist, path, model_name_save_n)
+        save_model(generator, model_name_save_n)

@@ -8,7 +8,7 @@ import tensorflow as tf
 import keras
 from keras.layers import Dense, GlobalAveragePooling2D
 from keras.models import Model
-from keras.applications import ResNet50, VGG16, InceptionV3
+from keras.applications import ResNet50, VGG16
 from keras_tuner.tuners import BayesianOptimization
 import keras_tuner as kt
 
@@ -16,6 +16,9 @@ from sklearn.model_selection import KFold, train_test_split
 from skopt import BayesSearchCV
 from skopt.space import Real, Categorical, Integer
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import StandardScaler
+from skimage.feature import hog
 
 from m_package.data.creartion import DyslexiaVizualization, img_dataset_creation, window_dataset_creation
 from m_package.models.basic import conv_2d_basic, lstm_1d_basic, convlstm_3d_basic_huddled, convlstm_3d_basic, conv3d_basic, conv3d_basic_huddled, convlstm_1d_basic, conv_1d_basic
@@ -69,6 +72,23 @@ def return_optimizer(best_hps):
     return optimizer
 
 
+def hog_dataset(X, y, pixels_cell, cell_block):
+    y = np.argmax(y, axis=1)
+    X_hog = []
+    X_features_hog = []
+    for video in X:
+        video_arr = []
+        features_arr = []
+        for frame in video:
+            fd, hog_frame = hog(frame, orientations=8, pixels_per_cell=(pixels_cell, pixels_cell),
+                                cells_per_block=(cell_block, cell_block), visualize=True)
+            video_arr.append(hog_frame)
+            features_arr.append(fd)
+        X_hog.append(video_arr)
+        X_features_hog.append(features_arr)
+    return np.array(X_hog), np.array(X_features_hog), y
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -106,6 +126,7 @@ if __name__ == "__main__":
             "deep is for deeper neural network"
             "gbc for GradientBoostingClassifier"
             "rf for RandomForestClassifier"
+            "mlp for MLPClassifier"
             "resnet is for pretrained ResNet50"
             "vgg is for pretrained VGG16"
             "inception is for pretrained InceptionV3"
@@ -372,11 +393,7 @@ if __name__ == "__main__":
 
             conf_matrix(model, test_dataset, f"model_{model_name_save}")
 
-    elif model_name == "gbc" or model_name == "rf":
-        X_reshaped = X_data.reshape(X_data.shape[0], -1)
-        y_data = np.argmax(y_data, axis=1)
-        X_train_t, X_val, y_train_t, y_val = train_test_split(X_reshaped, y_data, test_size=0.65, stratify=y_data) 
-
+    elif model_name == "gbc" or model_name == "rf" or model_name == "mlp":
         if model_name == "gbc":
             param_space = {
                 'n_estimators': Integer(100, 1000),
@@ -394,40 +411,98 @@ if __name__ == "__main__":
             }
 
             model = RandomForestClassifier()
+        elif model_name == "mlp":
+            param_space = {
+                "activation": Categorical(["logistic", "tanh", "relu"]),
+                "solver": Categorical(["lbfgs", "sgd", "adam"]),
+                "learning_rate": Categorical(["constant", "invscaling", "adaptive"])
+            }
+            model = MLPClassifier()
 
-        print("Tuning has begun")
-        bayes_search = BayesSearchCV(model, param_space, n_iter=100, cv=5, n_jobs=5)
+        if data_name[:4] != '_hog':
+            X_reshaped = X_data.reshape(X_data.shape[0], -1)
+            y_data = np.argmax(y_data, axis=1) 
+            if model_name == "mlp":
+                scaler = StandardScaler()
+                X_reshaped = scaler.fit_transform(X_reshaped)
+            X_train_t, X_val, y_train_t, y_val = train_test_split(X_reshaped, y_data, test_size=0.65, stratify=y_data)
+            print("Tuning has begun")
+            bayes_search = BayesSearchCV(model, param_space, n_iter=100, cv=5, n_jobs=5)
 
-        np.int = int
-        bayes_search.fit(X_train_t, y_train_t)
+            np.int = int
+            bayes_search.fit(X_train_t, y_train_t)
 
-        best_estimator = bayes_search.best_estimator_
-        best_params = bayes_search.best_params_
-        print(f"Best parameters found for {model_name}:")
-        print(best_params)
+            best_estimator = bayes_search.best_estimator_
+            best_params = bayes_search.best_params_
+            print(f"Best parameters found for {model_name}:")
+            print(best_params)
 
-        metrics_results = {
-            "auc_roc" : [],
-            "accuracy" : [],
-            "precision": [],
-            "recall": [],
-            "f1": []
-        }
+            metrics_results = {
+                "auc_roc" : [],
+                "accuracy" : [],
+                "precision": [],
+                "recall": [],
+                "f1": []
+            }
 
-        kf = KFold(n_splits=5)
-        for train_index , test_index in kf.split(X_val):
-            X_train , X_test = X_val[train_index], X_val[test_index]
-            y_train , y_test = y_val[train_index] , y_val[test_index]
+            kf = KFold(n_splits=5)
+            for train_index , test_index in kf.split(X_val):
+                X_train , X_test = X_val[train_index], X_val[test_index]
+                y_train , y_test = y_val[train_index] , y_val[test_index]
 
-            model_best = GradientBoostingClassifier().set_params(**best_params)
-            model_best.fit(X_train,y_train)
-            pred_values = model_best.predict(X_test)
-            pred_proba = model_best.predict_proba(X_test)[:, 1]
-            metrics_results = linear_per_fold(y_test, pred_proba, pred_values, metrics_results)
+                model_best = GradientBoostingClassifier().set_params(**best_params)
+                model_best.fit(X_train,y_train)
+                pred_values = model_best.predict(X_test)
+                pred_proba = model_best.predict_proba(X_test)[:, 1]
+                metrics_results = linear_per_fold(y_test, pred_proba, pred_values, metrics_results)
 
-        final_results = resulting_binary(metrics_results)
-        print(final_results)
-    
+            final_results = resulting_binary(metrics_results)
+            print(final_results)
+        else:
+            for pixels_cell in range(1,4):
+                for cell_block in range(1,3):
+                    print(f"Pixels per cell: {pixels_cell} \t Cells per block: {cell_block}")
+                    X_h, X_h_f, y = hog_dataset(X_data, y_data, pixels_cell, cell_block)
+                    X_f_h_concated = np.reshape(X_h_f, (X_h_f.shape[0], X_h_f.shape[1]*X_h_f.shape[2]))
+                    scaler = StandardScaler()
+                    X_f_h_concated = scaler.fit_transform(X_f_h_concated)
+                    X_train_t, X_val, y_train_t, y_val = train_test_split(X_f_h_concated, y, test_size=0.5, stratify=y)
+
+                    bayes_search = BayesSearchCV(model, param_space, n_iter=100, cv=5, n_jobs=5)
+
+                    np.int = int
+                    bayes_search.fit(X_train_t, y_train_t)
+
+                    best_estimator = bayes_search.best_estimator_
+                    best_params = bayes_search.best_params_
+                    print(f"Best parameters found for {model_name}:")
+                    print(best_params)
+
+                    metrics_results = {
+                        "auc_roc" : [],
+                        "accuracy" : [],
+                        "precision": [],
+                        "recall": [],
+                        "f1": []
+                        }
+                    
+                    kf = KFold(n_splits=5)
+                    for train_index , test_index in kf.split(X_val):
+                        X_train , X_test = X_val[train_index], X_val[test_index]
+                        y_train , y_test = y_val[train_index] , y_val[test_index]
+
+                        model_best = GradientBoostingClassifier().set_params(**best_params)
+                        model_best.fit(X_train,y_train)
+                        pred_values = model_best.predict(X_test)
+                        pred_proba = model_best.predict_proba(X_test)[:, 1]
+                        metrics_results = linear_per_fold(y_test, pred_proba, pred_values, metrics_results)
+
+                    final_results = resulting_binary(metrics_results)
+                    print(f"Results for {model_name} \n Best params: {best_params} \n Pixels per cell: {pixels_cell} \t Cells per block: {cell_block}")
+                    print(f"Dict with Results: {final_results}")
+                    print("Start another tuning \n")
+
+
     #pretrained models
     if type_name == "pretrained":
         print("in pr")
@@ -535,4 +610,3 @@ if __name__ == "__main__":
             
             #saving conf_matrix
             conf_matrix(model, test_dataset, f"{data_rep}_{epoch_num}{data_name}_{model_name}_{type_name}")
-

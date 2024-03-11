@@ -642,8 +642,8 @@ if __name__ == "__main__":
 
         g_opt = keras.optimizers.SGD(0.001)
         d_opt = keras.optimizers.SGD(0.001)
-        g_loss=tf.keras.losses.BinaryCrossentropy()
-        d_loss=tf.keras.losses.BinaryCrossentropy()
+        g_loss=tf.keras.losses.BinaryCrossentropy(from_logits=True)
+        d_loss=tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
         gan.compile(g_opt, d_opt, g_loss, d_loss)
         hist = gan.fit(train_dataset, epochs=epoch_num)

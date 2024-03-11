@@ -91,7 +91,7 @@ def build_discriminator(image_shape):
         model.add(Flatten())
         model.add(Dense(2048, activation='relu', kernel_initializer='he_uniform'))
         model.add(LeakyReLU(0.2))
-        model.add(Dense(1, activation='sigmoid'))
+        model.add(Dense(1))
         return model
 
 

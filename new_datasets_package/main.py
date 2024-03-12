@@ -24,7 +24,7 @@ from m_package.data.creartion import DyslexiaVizualization, img_dataset_creation
 from m_package.models.basic import conv_2d_basic, lstm_1d_basic, convlstm_3d_basic_huddled, convlstm_3d_basic, conv3d_basic, conv3d_basic_huddled, convlstm_1d_basic, conv_1d_basic
 from m_package.models.deep import conv_2d_deep, lstm_1d_deep, conv3d_deep, conv3d_deep_huddled, convlstm_3d_deep, convlstm_3d_deep_huddled, convlstm_1d_deep, conv_1d_deep
 from m_package.models.sitted import sitted_deep_ConvLSTM1D, sitted_basic_ConvLSTM1D, sitted_basic_ConvLSTM3D, sitted_deep_ConvLSTM3D
-from m_package.models.GAN import GAN, build_discriminator, build_generator_ver1, build_generator_ver2
+from m_package.models.GAN import GANModel, build_discriminator, build_generator_ver1, build_generator_ver2, ImageGenerationCallback
 from m_package.common.utils import plot_history, conf_matrix, GAN_plot, save_model
 from m_package.common.metrics_binary import metrics_per_fold_binary, resulting_binary, linear_per_fold
 
@@ -92,8 +92,9 @@ def hog_dataset(X, y, pixels_cell, cell_block):
 
 def GAN_data():
     X_dys, y_dys = img_dataset_creation(path="Datasets", dataset_name="Fixation_cutted_binary_dys.csv")
+    print(X_dys.shape)
     y_dys = np.argmax(y_dys, axis=1)
-    train_dataset = tf.data.Dataset.from_tensor_slices((X_dys, y_dys))
+    train_dataset = tf.data.Dataset.from_tensor_slices((X_dys))
     train_dataset_dys = train_dataset.shuffle(buffer_size=len(X_dys)).batch(batch_size)
 
     return train_dataset_dys
@@ -623,30 +624,31 @@ if __name__ == "__main__":
             conf_matrix(model, test_dataset, f"{data_rep}_{epoch_num}{data_name}_{model_name}_{type_name}")
 
     if model_name == "gan":
+        save_freq = 25
         #dyslexia
         noise_shape = 128
         dense_image_shape = np.prod(X_data[0].shape)
         image_shape = X_data[0].shape
         train_dataset = GAN_data()
-        #train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
-        print(image_shape)
+        #train_dataset = tf.data.Dataset.from_tensor_slices((X_data))
+        #train_dataset = train_dataset.shuffle(buffer_size=len(X_data)).batch(batch_size)
 
         #vers1
         if type_name == "ver1":
-            generator = build_generator_ver1(dense_image_shape, image_shape)
+            generator = build_generator_ver1()
         elif type_name == "ver2":
             generator = build_generator_ver2()
 
-        discriminator = build_discriminator(image_shape)
-        gan = GAN(generator, discriminator, batch_size)
+        discriminator = build_discriminator(size)
+        gan = GANModel(generator, discriminator)
 
-        g_opt = keras.optimizers.SGD(0.001)
-        d_opt = keras.optimizers.SGD(0.001)
+        generator_optimizer = keras.optimizers.SGD(0.001)
+        discriminator_optimizer = keras.optimizers.SGD(0.001)
         g_loss=tf.keras.losses.BinaryCrossentropy(from_logits=True)
         d_loss=tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
-        gan.compile(g_opt, d_opt, g_loss, d_loss)
-        hist = gan.fit(train_dataset, epochs=epoch_num)
+        gan.compile(generator_optimizer, discriminator_optimizer, g_loss, d_loss)
+        hist = gan.fit(train_dataset, epochs=epoch_num, callbacks=[ImageGenerationCallback(generator, "generated_images", save_freq, type_name)])
 
         model_name_save_n = f"{type_name}_gan_model_{epoch_num}"
         path = "Figures"

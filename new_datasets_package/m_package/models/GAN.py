@@ -59,25 +59,81 @@ def build_generator_ver2():
 
 
 
-def build_discriminator(image_shape):
+def build_discriminator_T(image_shape, moment):
         model = keras.Sequential()
         model.add(Conv2D(32, kernel_size=5, input_shape=(image_shape[0], image_shape[1], 1), activation='relu' ,padding="same", data_format='channels_last'))
-        model.add(BatchNormalization(momentum=0.8))
+        model.add(BatchNormalization(momentum=moment))
 
         model.add(Conv2D(64, kernel_size=3, strides=2, activation='relu', padding="same", data_format='channels_last'))
-        model.add(BatchNormalization(momentum=0.8))
+        model.add(BatchNormalization(momentum=moment))
 
         model.add(Conv2D(128, kernel_size=3, strides=2, activation='relu', padding="same", data_format='channels_last'))
-        model.add(BatchNormalization(momentum=0.8))
+        model.add(BatchNormalization(momentum=moment))
 
         model.add(Conv2D(256, kernel_size=3, strides=2, activation='relu', padding="same", data_format='channels_last'))
-        model.add(BatchNormalization(momentum=0.8))
+        model.add(BatchNormalization(momentum=moment))
 
         model.add(Flatten())
         model.add(Dense(2048, activation='relu', kernel_initializer='he_uniform'))
         model.add(LeakyReLU(0.2))
         model.add(Dense(1))
         return model
+
+
+def build_discriminator(image_shape):
+    model = keras.Sequential()
+    model.add(Conv2D(64, kernel_size=5, input_shape=(image_shape[0], image_shape[1], 1), padding="same", data_format='channels_last'))
+    model.add(BatchNormalization())
+    model.add(LeakyReLU(0.2))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+
+    model.add(Conv2D(128, kernel_size=3, padding="same", data_format='channels_last'))
+    model.add(BatchNormalization())
+    model.add(LeakyReLU(0.2))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+
+    model.add(Conv2D(256, kernel_size=3, padding="same", data_format='channels_last'))
+    model.add(BatchNormalization())
+    model.add(LeakyReLU(0.2))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+
+    model.add(Flatten())
+    model.add(Dense(1024, activation='relu', kernel_initializer='he_uniform'))
+    model.add(Dropout(0.3))
+    model.add(Dense(1))
+    
+    return model
+
+
+def desicion_model():
+    model = keras.Sequential()
+    model.add(Conv2D(filters=32, 
+                     kernel_size=(7,7), 
+                     activation='relu', 
+                     input_shape=(60, 180, 1))) 
+    model.add(MaxPooling2D(pool_size=(2,2), padding='same'))
+    model.add(BatchNormalization())
+
+    model.add(Conv2D(filters=64, 
+                     kernel_size=(5,5), 
+                     activation='relu')) 
+    model.add(MaxPooling2D(pool_size=(2, 2), padding='same'))
+    model.add(BatchNormalization())
+
+    model.add(Conv2D(filters=64,
+                     kernel_size=(3,3), 
+                     activation='relu')) 
+    model.add(MaxPooling2D(pool_size=(2, 2), padding='same'))
+    model.add(BatchNormalization())
+
+    model.add(Flatten())
+    model.add(Dense(128, activation='relu'))
+    model.add(Dropout(0.3))
+    model.add(Dense(64, activation='relu'))
+    model.add(Dropout(0.3))
+    model.add(Dense(2, activation='sigmoid'))
+    return model
+
 
 
 class ImageGenerationCallback(tf.keras.callbacks.Callback):

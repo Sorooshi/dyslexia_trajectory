@@ -642,8 +642,8 @@ if __name__ == "__main__":
         discriminator = build_discriminator(size)
         gan = GANModel(generator, discriminator)
 
-        generator_optimizer = keras.optimizers.SGD(0.001)
-        discriminator_optimizer = keras.optimizers.SGD(0.001)
+        generator_optimizer = keras.optimizers.SGD(1e-4)
+        discriminator_optimizer = keras.optimizers.SGD(1e-4)
         g_loss=tf.keras.losses.BinaryCrossentropy(from_logits=True)
         d_loss=tf.keras.losses.BinaryCrossentropy(from_logits=True)
 

@@ -24,7 +24,7 @@ from m_package.data.creartion import DyslexiaVizualization, img_dataset_creation
 from m_package.models.basic import conv_2d_basic, lstm_1d_basic, convlstm_3d_basic_huddled, convlstm_3d_basic, conv3d_basic, conv3d_basic_huddled, convlstm_1d_basic, conv_1d_basic
 from m_package.models.deep import conv_2d_deep, lstm_1d_deep, conv3d_deep, conv3d_deep_huddled, convlstm_3d_deep, convlstm_3d_deep_huddled, convlstm_1d_deep, conv_1d_deep
 from m_package.models.sitted import sitted_deep_ConvLSTM1D, sitted_basic_ConvLSTM1D, sitted_basic_ConvLSTM3D, sitted_deep_ConvLSTM3D
-from m_package.models.GAN import GANModel, build_discriminator, build_generator_ver1, build_generator_ver2, ImageGenerationCallback
+from m_package.models.GAN import GANModel, build_discriminator, build_generator_ver1, build_generator_ver2, ImageGenerationCallback, desicion_model
 from m_package.common.utils import plot_history, conf_matrix, GAN_plot, save_model
 from m_package.common.metrics_binary import metrics_per_fold_binary, resulting_binary, linear_per_fold
 
@@ -633,24 +633,32 @@ if __name__ == "__main__":
         #train_dataset = tf.data.Dataset.from_tensor_slices((X_data))
         #train_dataset = train_dataset.shuffle(buffer_size=len(X_data)).batch(batch_size)
 
-        #vers1
-        if type_name == "ver1":
-            generator = build_generator_ver1()
-        elif type_name == "ver2":
-            generator = build_generator_ver2()
+        moments = np.linspace(0.01, 0.99, num=15)
+        lr_g_int =  np.linspace(1e-5, 0.01, num=15)
+        lr_d_int =  np.linspace(1e-5, 0.01, num=15)
+        for moment in moments:
+            for lr_g in lr_g_int:
+                for lr_d in lr_d_int:
+                    if type_name == "ver1":
+                        generator = build_generator_ver1()
+                    elif type_name == "ver2":
+                        generator = build_generator_ver2()
 
-        discriminator = build_discriminator(size)
-        gan = GANModel(generator, discriminator)
+                    model_name_save_n = f"{type_name}_gan_model_{epoch_num}_lr_g={lr_g}_lr_d={lr_d}_momentum={moment}"
+                    print(model_name_save_n)
+                    discriminator = build_discriminator(size, moment)
+                    gan = GANModel(generator, discriminator)
 
-        generator_optimizer = keras.optimizers.SGD(1e-4)
-        discriminator_optimizer = keras.optimizers.SGD(1e-4)
-        g_loss=tf.keras.losses.BinaryCrossentropy(from_logits=True)
-        d_loss=tf.keras.losses.BinaryCrossentropy(from_logits=True)
+                    generator_optimizer = keras.optimizers.SGD(lr_g)
+                    discriminator_optimizer = keras.optimizers.SGD(lr_d)
+                    g_loss=tf.keras.losses.BinaryCrossentropy(from_logits=True)
+                    d_loss=tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
-        gan.compile(generator_optimizer, discriminator_optimizer, g_loss, d_loss)
-        hist = gan.fit(train_dataset, epochs=epoch_num, callbacks=[ImageGenerationCallback(generator, "generated_images", save_freq, type_name)])
+                    gan.compile(generator_optimizer, discriminator_optimizer, g_loss, d_loss)
+                    hist = gan.fit(train_dataset, epochs=epoch_num) #callbacks=[ImageGenerationCallback(generator, "generated_images", save_freq, type_name)])
 
-        model_name_save_n = f"{type_name}_gan_model_{epoch_num}"
-        path = "Figures"
-        GAN_plot(hist, path, model_name_save_n)
-        save_model(generator, model_name_save_n)
+                    path = "Figures"
+                    GAN_plot(hist, path, model_name_save_n)
+                    #save_model(generator, model_name_save_n)
+
+

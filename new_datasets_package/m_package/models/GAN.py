@@ -27,7 +27,7 @@ def build_generator_ver1():
     
     model.add(Conv2DTranspose(128, (4, 4), strides=(1, 1), padding='same', activation="relu", use_bias=False))
     
-    model.add(Conv2DTranspose(1, (4, 4), strides=(1, 1), padding='same', activation="sigmoid", use_bias=False))
+    model.add(Conv2DTranspose(1, (4, 4), strides=(1, 1), padding='same', activation="tanh", use_bias=False))
 
     return model
 
@@ -53,25 +53,25 @@ def build_generator_ver2():
 
     model.add(Conv2D(128, (4, 4), padding='same', data_format='channels_last', activation="relu"))
 
-    model.add(Conv2D(1, (4, 4), padding='same', data_format='channels_last', activation="sigmoid"))
+    model.add(Conv2D(1, (4, 4), padding='same', data_format='channels_last', activation="tanh"))
 
     return model
 
 
 
-def build_discriminator_T(image_shape, moment):
+def build_discriminator(image_shape):
         model = keras.Sequential()
         model.add(Conv2D(32, kernel_size=5, input_shape=(image_shape[0], image_shape[1], 1), activation='relu' ,padding="same", data_format='channels_last'))
-        model.add(BatchNormalization(momentum=moment))
+        model.add(BatchNormalization())
 
         model.add(Conv2D(64, kernel_size=3, strides=2, activation='relu', padding="same", data_format='channels_last'))
-        model.add(BatchNormalization(momentum=moment))
+        model.add(BatchNormalization())
 
         model.add(Conv2D(128, kernel_size=3, strides=2, activation='relu', padding="same", data_format='channels_last'))
-        model.add(BatchNormalization(momentum=moment))
+        model.add(BatchNormalization())
 
         model.add(Conv2D(256, kernel_size=3, strides=2, activation='relu', padding="same", data_format='channels_last'))
-        model.add(BatchNormalization(momentum=moment))
+        model.add(BatchNormalization())
 
         model.add(Flatten())
         model.add(Dense(2048, activation='relu', kernel_initializer='he_uniform'))
@@ -80,7 +80,7 @@ def build_discriminator_T(image_shape, moment):
         return model
 
 
-def build_discriminator(image_shape):
+def build_discriminator_T(image_shape):
     model = keras.Sequential()
     model.add(Conv2D(64, kernel_size=5, input_shape=(image_shape[0], image_shape[1], 1), padding="same", data_format='channels_last'))
     model.add(BatchNormalization())

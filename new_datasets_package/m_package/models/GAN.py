@@ -59,19 +59,19 @@ def build_generator_ver2():
 
 
 
-def build_discriminator(image_shape):
+def build_discriminator(image_shape, moment):
         model = keras.Sequential()
         model.add(Conv2D(32, kernel_size=5, input_shape=(image_shape[0], image_shape[1], 1), activation='relu' ,padding="same", data_format='channels_last'))
-        model.add(BatchNormalization())
+        model.add(BatchNormalization(momentum=moment))
 
         model.add(Conv2D(64, kernel_size=3, strides=2, activation='relu', padding="same", data_format='channels_last'))
-        model.add(BatchNormalization())
+        model.add(BatchNormalization(momentum=moment))
 
         model.add(Conv2D(128, kernel_size=3, strides=2, activation='relu', padding="same", data_format='channels_last'))
-        model.add(BatchNormalization())
+        model.add(BatchNormalization(momentum=moment))
 
         model.add(Conv2D(256, kernel_size=3, strides=2, activation='relu', padding="same", data_format='channels_last'))
-        model.add(BatchNormalization())
+        model.add(BatchNormalization(momentum=moment))
 
         model.add(Flatten())
         model.add(Dense(2048, activation='relu', kernel_initializer='he_uniform'))

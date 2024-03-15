@@ -481,7 +481,7 @@ if __name__ == "__main__":
                     X_f_h_concated = scaler.fit_transform(X_f_h_concated)
                     X_train_t, X_val, y_train_t, y_val = train_test_split(X_f_h_concated, y, test_size=0.5, stratify=y)
 
-                    bayes_search = BayesSearchCV(model, param_space, n_iter=100, cv=5, n_jobs=5)
+                    bayes_search = BayesSearchCV(model, param_space, n_iter=40, cv=5, n_jobs=5)
 
                     np.int = int
                     bayes_search.fit(X_train_t, y_train_t)

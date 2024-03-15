@@ -472,7 +472,7 @@ if __name__ == "__main__":
             final_results = resulting_binary(metrics_results)
             print(final_results)
         else:
-            for pixels_cell in range(1,4):
+            for pixels_cell in range(1,3):
                 for cell_block in range(1,3):
                     print(f"Pixels per cell: {pixels_cell} \t Cells per block: {cell_block}")
                     X_h, X_h_f, y = hog_dataset(X_data, y_data, pixels_cell, cell_block)

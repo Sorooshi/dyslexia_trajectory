@@ -93,6 +93,7 @@ def hog_dataset(X, y, pixels_cell, cell_block):
 def GAN_data():
     X_dys, y_dys = img_dataset_creation(path="Datasets", dataset_name="Fixation_cutted_binary_dys.csv")
     print(X_dys.shape)
+    X_dys = X_dys/255
     y_dys = np.argmax(y_dys, axis=1)
     train_dataset = tf.data.Dataset.from_tensor_slices((X_dys))
     train_dataset_dys = train_dataset.shuffle(buffer_size=len(X_dys)).batch(batch_size)

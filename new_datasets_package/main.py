@@ -630,9 +630,9 @@ if __name__ == "__main__":
         noise_shape = 128
         dense_image_shape = np.prod(X_data[0].shape)
         image_shape = X_data[0].shape
-        #train_dataset = GAN_data()
-        train_dataset = tf.data.Dataset.from_tensor_slices((X_data))
-        train_dataset = train_dataset.shuffle(buffer_size=len(X_data)).batch(batch_size)
+        train_dataset = GAN_data()
+        #train_dataset = tf.data.Dataset.from_tensor_slices((X_data))
+        #train_dataset = train_dataset.shuffle(buffer_size=len(X_data)).batch(batch_size)
 
         if run == 1:
             moments = np.linspace(0.01, 0.99, num=10)

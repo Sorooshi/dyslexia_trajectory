@@ -433,6 +433,7 @@ if __name__ == "__main__":
             model = MLPClassifier()
 
         if data_name[:4] != '_hog':
+
             X_reshaped = X_data.reshape(X_data.shape[0], -1)
             y_data = np.argmax(y_data, axis=1) 
             if model_name == "mlp":
@@ -472,7 +473,7 @@ if __name__ == "__main__":
             final_results = resulting_binary(metrics_results)
             print(final_results)
         else:
-            for pixels_cell in range(1,3):
+            for pixels_cell in range(1,4):
                 for cell_block in range(1,3):
                     print(f"Pixels per cell: {pixels_cell} \t Cells per block: {cell_block}")
                     X_h, X_h_f, y = hog_dataset(X_data, y_data, pixels_cell, cell_block)
@@ -481,7 +482,7 @@ if __name__ == "__main__":
                     X_f_h_concated = scaler.fit_transform(X_f_h_concated)
                     X_train_t, X_val, y_train_t, y_val = train_test_split(X_f_h_concated, y, test_size=0.5, stratify=y)
 
-                    bayes_search = BayesSearchCV(model, param_space, n_iter=40, cv=5, n_jobs=5)
+                    bayes_search = BayesSearchCV(model, param_space, n_iter=100, cv=5, n_jobs=5)
 
                     np.int = int
                     bayes_search.fit(X_train_t, y_train_t)
@@ -624,27 +625,27 @@ if __name__ == "__main__":
             conf_matrix(model, test_dataset, f"{data_rep}_{epoch_num}{data_name}_{model_name}_{type_name}")
 
     if model_name == "gan":
-        save_freq = 25
+        save_freq = 100
         #dyslexia
         noise_shape = 128
         dense_image_shape = np.prod(X_data[0].shape)
         image_shape = X_data[0].shape
-        train_dataset = GAN_data()
-        #train_dataset = tf.data.Dataset.from_tensor_slices((X_data))
-        #train_dataset = train_dataset.shuffle(buffer_size=len(X_data)).batch(batch_size)
+        #train_dataset = GAN_data()
+        train_dataset = tf.data.Dataset.from_tensor_slices((X_data))
+        train_dataset = train_dataset.shuffle(buffer_size=len(X_data)).batch(batch_size)
 
-        moments = np.linspace(0.01, 0.99, num=15)
-        lr_g_int =  np.linspace(1e-5, 0.01, num=15)
-        lr_d_int =  np.linspace(1e-5, 0.01, num=15)
-        for moment in moments:
-            for lr_g in lr_g_int:
+        if run == 1:
+            moments = np.linspace(0.01, 0.99, num=10)
+            lr_g = 1e-5
+            lr_d_int =  np.linspace(1e-10, 1e-5, num=10)
+            for moment in moments:
                 for lr_d in lr_d_int:
                     if type_name == "ver1":
                         generator = build_generator_ver1()
                     elif type_name == "ver2":
                         generator = build_generator_ver2()
 
-                    model_name_save_n = f"{type_name}_gan_model_{epoch_num}_lr_g={lr_g}_lr_d={lr_d}_momentum={moment}"
+                    model_name_save_n = f"fixed_lr_g_{type_name}_gan_model_{epoch_num}_lr_d={lr_d}_momentum={moment}"
                     print(model_name_save_n)
                     discriminator = build_discriminator(size, moment)
                     gan = GANModel(generator, discriminator)
@@ -660,5 +661,29 @@ if __name__ == "__main__":
                     path = "Figures"
                     GAN_plot(hist, path, model_name_save_n)
                     #save_model(generator, model_name_save_n)
+        elif run == 2:
+            lr_g = 1e-5
+            lr_d = 1e-5
+            moment = 0.01
 
+            if type_name == "ver1":
+                generator = build_generator_ver1()
+            elif type_name == "ver2":
+                generator = build_generator_ver2()
 
+            model_name_save_n = f"testing_images_{type_name}_gan_model_{epoch_num}_lr_d={lr_d}_momentum={moment}"
+            print(model_name_save_n)
+            discriminator = build_discriminator(size, moment)
+            gan = GANModel(generator, discriminator)
+
+            generator_optimizer = keras.optimizers.SGD(lr_g)
+            discriminator_optimizer = keras.optimizers.SGD(lr_d)
+            g_loss=tf.keras.losses.BinaryCrossentropy(from_logits=True)
+            d_loss=tf.keras.losses.BinaryCrossentropy(from_logits=True)
+
+            gan.compile(generator_optimizer, discriminator_optimizer, g_loss, d_loss)
+            name_pic = f"GAN_lr_d={lr_d}_lr_g={lr_g}_momentum={moment}_{type_name}"
+            hist = gan.fit(train_dataset, epochs=epoch_num, callbacks=[ImageGenerationCallback(generator, "generated_images", save_freq, name_pic)])
+
+            path = "Figures"
+            GAN_plot(hist, path, model_name_save_n)

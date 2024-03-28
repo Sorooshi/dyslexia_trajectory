@@ -10,7 +10,7 @@ from keras.models import Model
 noise_shape = 128
 
 
-def build_generator_ver1(): 
+def build_generator_ver1(size): 
     model = keras.Sequential()
     
     model.add(Dense(5*15*128, input_dim=128))
@@ -27,12 +27,12 @@ def build_generator_ver1():
     
     model.add(Conv2DTranspose(128, (4, 4), strides=(1, 1), padding='same', activation="relu", use_bias=False))
     
-    model.add(Conv2DTranspose(1, (4, 4), strides=(1, 1), padding='same', activation="tanh", use_bias=False))
+    model.add(Conv2DTranspose(size, (4, 4), strides=(1, 1), padding='same', activation="tanh", use_bias=False))
 
     return model
 
 
-def build_generator_ver2(): 
+def build_generator_ver2(size): 
     model = keras.Sequential()
     
     model.add(Dense(5*15*128, input_dim=128))
@@ -53,7 +53,7 @@ def build_generator_ver2():
 
     model.add(Conv2D(128, (4, 4), padding='same', data_format='channels_last', activation="relu"))
 
-    model.add(Conv2D(1, (4, 4), padding='same', data_format='channels_last', activation="tanh"))
+    model.add(Conv2D(size, (4, 4), padding='same', data_format='channels_last', activation="tanh"))
 
     return model
 
@@ -61,7 +61,7 @@ def build_generator_ver2():
 
 def build_discriminator(image_shape, moment):
         model = keras.Sequential()
-        model.add(Conv2D(32, kernel_size=5, input_shape=(image_shape[0], image_shape[1], 1), activation='relu' ,padding="same", data_format='channels_last'))
+        model.add(Conv2D(32, kernel_size=5, input_shape=(image_shape[0], image_shape[1], image_shape[2]), activation='relu' ,padding="same", data_format='channels_last'))
         model.add(BatchNormalization(momentum=moment))
 
         model.add(Conv2D(64, kernel_size=3, strides=2, activation='relu', padding="same", data_format='channels_last'))
@@ -82,7 +82,7 @@ def build_discriminator(image_shape, moment):
 
 def build_discriminator_T(image_shape):
     model = keras.Sequential()
-    model.add(Conv2D(64, kernel_size=5, input_shape=(image_shape[0], image_shape[1], 1), padding="same", data_format='channels_last'))
+    model.add(Conv2D(64, kernel_size=5, input_shape=(image_shape[0], image_shape[1], image_shape[2]), padding="same", data_format='channels_last'))
     model.add(BatchNormalization())
     model.add(LeakyReLU(0.2))
     model.add(MaxPooling2D(pool_size=(2, 2)))
@@ -137,12 +137,13 @@ def desicion_model():
 
 
 class ImageGenerationCallback(tf.keras.callbacks.Callback):
-    def __init__(self, generator, save_dir, save_freq, ver):
+    def __init__(self, generator, save_dir, save_freq, ver, color):
         super(ImageGenerationCallback, self).__init__()
         self.generator = generator
         self.save_dir = save_dir
         self.save_freq = save_freq
         self.ver = ver
+        self.color = color
 
     def on_epoch_end(self, epoch, logs=None):
         if epoch % self.save_freq == 0:
@@ -151,11 +152,14 @@ class ImageGenerationCallback(tf.keras.callbacks.Callback):
             generated_images = self.generator(noise, training=False)
 
             for i in range(generated_images.shape[0]):
-                 plt.subplot(4, 4, i+1)
-                 plt.imshow(generated_images[i, :, :, 0], cmap='gray')
-                 plt.axis('off')
+                plt.subplot(4, 4, i+1)
+                if self.color == 1:
+                    plt.imshow(generated_images[i, :, :, 0], cmap='gray')
+                else: 
+                    plt.imshow(generated_images[i, :, :, 0], cmap='viridis')
+                plt.axis('off')
                  
-            plt.savefig(f"{self.save_dir}/{self.ver}_generated_image_{epoch}.png")
+            plt.savefig(f"{self.save_dir}/{self.ver}_{self.color}_generated_image_{epoch}.png")
             print(f"Generated images saved for epoch {epoch}")
 
 

@@ -17,10 +17,11 @@ from skopt import BayesSearchCV
 from skopt.space import Real, Categorical, Integer
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.neural_network import MLPClassifier
+
 from sklearn.preprocessing import StandardScaler
 from skimage.feature import hog
 
-from m_package.data.creartion import DyslexiaVizualization, img_dataset_creation, window_dataset_creation
+from m_package.data.creartion import DyslexiaVizualization, img_dataset_creation, window_dataset_creation, img_dataset_creation_colored
 from m_package.models.basic import conv_2d_basic, lstm_1d_basic, convlstm_3d_basic_huddled, convlstm_3d_basic, conv3d_basic, conv3d_basic_huddled, convlstm_1d_basic, conv_1d_basic
 from m_package.models.deep import conv_2d_deep, lstm_1d_deep, conv3d_deep, conv3d_deep_huddled, convlstm_3d_deep, convlstm_3d_deep_huddled, convlstm_1d_deep, conv_1d_deep
 from m_package.models.sitted import sitted_deep_ConvLSTM1D, sitted_basic_ConvLSTM1D, sitted_basic_ConvLSTM3D, sitted_deep_ConvLSTM3D
@@ -93,7 +94,7 @@ def hog_dataset(X, y, pixels_cell, cell_block):
 def GAN_data():
     X_dys, y_dys = img_dataset_creation(path="Datasets", dataset_name="Fixation_cutted_binary_dys.csv")
     print(X_dys.shape)
-    #X_dys = X_dys/255
+    X_dys = X_dys/255
     y_dys = np.argmax(y_dys, axis=1)
     train_dataset = tf.data.Dataset.from_tensor_slices((X_dys))
     train_dataset_dys = train_dataset.shuffle(buffer_size=len(X_dys)).batch(batch_size)
@@ -128,6 +129,7 @@ if __name__ == "__main__":
              "_hog_traj is for hog By size (with trajectories - 20 frames)"
              "_hog_huddled is for hog By size (huddled - 20 frames)"
              "_img_fixation is for images"
+             "_img_fixation_c is for colored images"
              "_windowed is for window dataset"
     )
 
@@ -626,14 +628,22 @@ if __name__ == "__main__":
             conf_matrix(model, test_dataset, f"{data_rep}_{epoch_num}{data_name}_{model_name}_{type_name}")
 
     if model_name == "gan":
-        save_freq = 100
+        if data_name == "_img_fixation_c":
+            print("Start of the dataset creation")
+            #dataset_name_= "Fixation_testing_2.csv"
+            X_data, y_data = img_dataset_creation_colored(path="Datasets", dataset_name=dataset_name_)
+            image_shape = X_data[0].shape
+            color = 3
+        else:
+            image_shape = tuple((60,180,1))
+            color = 1
+        save_freq = 50
         #dyslexia
         noise_shape = 128
         dense_image_shape = np.prod(X_data[0].shape)
-        image_shape = X_data[0].shape
         train_dataset = GAN_data()
-        #train_dataset = tf.data.Dataset.from_tensor_slices((X_data))
-        #train_dataset = train_dataset.shuffle(buffer_size=len(X_data)).batch(batch_size)
+        train_dataset = tf.data.Dataset.from_tensor_slices((X_data))
+        train_dataset = train_dataset.shuffle(buffer_size=len(X_data)).batch(batch_size)
 
         if run == 1:
             moments = np.linspace(0.01, 0.99, num=10)
@@ -667,14 +677,15 @@ if __name__ == "__main__":
             lr_d = 1e-5
             moment = 0.01
 
-            if type_name == "ver1":
-                generator = build_generator_ver1()
-            elif type_name == "ver2":
-                generator = build_generator_ver2()
 
-            model_name_save_n = f"testing_images_{type_name}_gan_model_{epoch_num}_lr_d={lr_d}_momentum={moment}"
+            if type_name == "ver1":
+                generator = build_generator_ver1(color)
+            elif type_name == "ver2":
+                generator = build_generator_ver2(color)
+
+            model_name_save_n = f"colored_images_{type_name}_gan_model_{epoch_num}_lr_d={lr_d}_momentum={moment}"
             print(model_name_save_n)
-            discriminator = build_discriminator(size, moment)
+            discriminator = build_discriminator(image_shape, moment)
             gan = GANModel(generator, discriminator)
 
             generator_optimizer = keras.optimizers.SGD(lr_g)
@@ -683,8 +694,9 @@ if __name__ == "__main__":
             d_loss=tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
             gan.compile(generator_optimizer, discriminator_optimizer, g_loss, d_loss)
-            name_pic = f"GAN_lr_d={lr_d}_lr_g={lr_g}_momentum={moment}_{type_name}"
-            hist = gan.fit(train_dataset, epochs=epoch_num, callbacks=[ImageGenerationCallback(generator, "generated_images", save_freq, name_pic)])
+            name_pic = f"GAN_colored_test"
+            hist = gan.fit(train_dataset, epochs=epoch_num, callbacks=[ImageGenerationCallback(generator, "generated_images", save_freq, name_pic, color)])
 
             path = "Figures"
             GAN_plot(hist, path, model_name_save_n)
+

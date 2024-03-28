@@ -10,6 +10,56 @@ import matplotlib.pyplot as plt
 import io
 
 
+def draw_scatter_colored(X, Y, dur):
+    fig, ax = plt.subplots(figsize=(18, 6), dpi=100)
+    fig.patch.set_facecolor('black')
+    ax.set_axis_off()
+    ax.patch.set_facecolor('white')
+    ax.patch.set_alpha(0.0)
+    ax.invert_yaxis()
+    plt.scatter(X, Y, c=dur, s=dur, cmap='viridis', vmin=0)
+    return fig
+
+
+def fig_to_np_colored(fig):
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    img_arr = np.frombuffer(buf.getvalue(), dtype=np.uint8)
+    buf.close()
+    
+    img = cv.imdecode(img_arr, cv.IMREAD_COLOR)  # Load the image as a color image
+    img = cv.resize(img, (180, 60), interpolation=cv.INTER_LINEAR)
+    img[0, :] = img[img.shape[0] - 1, :] = img[:, 0] = img[:, img.shape[1] - 1] = [0, 0, 0]  # Set border color to black
+    
+    plt.close(fig)
+    
+    return img
+
+
+def img_dataset_creation_colored(path, dataset_name):
+    fixation = os.path.join(path, dataset_name)
+    fix_data = pd.read_csv(fixation)
+
+    x_train_img, y_train_img = [], []
+
+    for ids in fix_data["SubjectID"].unique():
+        X = fix_data[fix_data["SubjectID"] == ids]["FIX_X"]
+        Y = fix_data[fix_data["SubjectID"] == ids]["FIX_Y"]
+        dur = fix_data[fix_data["SubjectID"] == ids]["FIX_DURATION"]
+
+        img = draw_scatter_colored(X, Y, dur)
+        np_img = fig_to_np_colored(img)
+        x_train_img.append(np_img)
+        y_train_img.append(fix_data[fix_data["SubjectID"] == ids]["Group"].values[0] - 1)
+
+    x_train_img = np.array(x_train_img)
+    y_train_img = tf.keras.utils.to_categorical(y_train_img)
+    y_train_img = np.array(y_train_img)
+
+    return x_train_img, y_train_img
+
+
 def draw_scatter(X, Y, dur):
     fig, ax = plt.subplots(figsize=(18, 6), dpi=100)
     fig.patch.set_facecolor('black')

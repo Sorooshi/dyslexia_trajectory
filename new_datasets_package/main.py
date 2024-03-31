@@ -164,6 +164,7 @@ if __name__ == "__main__":
             "convlstm is for convlstm type"
             "pretrained is for pretrained models"
             "ver1/ver2 for GAN versions of generator"
+            "ind for Independent test"
     )
 
     args = parser.parse_args()
@@ -332,7 +333,7 @@ if __name__ == "__main__":
             elif model_name == "deep":
                 model_build_func = conv_2d_deep
         elif data_rep == "1D":
-            if type_name == "lstm":
+            if type_name == "lstm" or type_name == "ind":
                 if model_name == "basic":
                     model_build_func = lstm_1d_basic
                 elif model_name == "deep":
@@ -348,7 +349,11 @@ if __name__ == "__main__":
                     model_build_func = conv_1d_basic
                 elif model_name == "deep":
                     model_build_func = conv_1d_deep
-        proj_name = f'{data_rep}{data_name}_{model_name}_{type_name}'
+        if type_name == "ind":
+            proj_name = f'{data_rep}{data_name}_{model_name}_lstm'
+            #proj_name = f'{data_rep}{data_name}_{model_name}_conv'
+        else:
+            proj_name = f'{data_rep}{data_name}_{model_name}_{type_name}'
         model_name_save = f"{data_rep}_{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}"
         if run == 1:
             train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
@@ -391,10 +396,26 @@ if __name__ == "__main__":
 
             for key in best_hps.values:
                 print(key, best_hps[key])
-
+            
             for _ in range(5):
                 #creating the datasets
-                train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
+                if type_name == "ind":
+                        X_train, X_val, y_train, y_val = train_test_split(X_data, y_data, test_size=0.35, stratify=y_data)
+                        print(X_train.shape)
+
+                        train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
+                        train_dataset = train_dataset.batch(batch_size, drop_remainder=True)
+
+                        val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
+                        val_dataset = val_dataset.batch(batch_size, drop_remainder=True)
+                        # test fom ind dataset
+                        X_test, y_test = window_dataset_creation(n_steps, path, "Independent_test.csv")
+                        print(X_test.shape)
+                        test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
+                        test_dataset = test_dataset.batch(batch_size, drop_remainder=True)
+
+                else:
+                    train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
                 #build and train model on huge number of epochs
                 model = model_build_func(best_hps)
                 model.compile(optimizer=return_optimizer(best_hps), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
@@ -699,4 +720,5 @@ if __name__ == "__main__":
 
             path = "Figures"
             GAN_plot(hist, path, model_name_save_n)
+
 

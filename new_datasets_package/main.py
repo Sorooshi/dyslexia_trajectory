@@ -26,7 +26,7 @@ from m_package.models.basic import conv_2d_basic, lstm_1d_basic, convlstm_3d_bas
 from m_package.models.deep import conv_2d_deep, lstm_1d_deep, conv3d_deep, conv3d_deep_huddled, convlstm_3d_deep, convlstm_3d_deep_huddled, convlstm_1d_deep, conv_1d_deep
 from m_package.models.sitted import sitted_deep_ConvLSTM1D, sitted_basic_ConvLSTM1D, sitted_basic_ConvLSTM3D, sitted_deep_ConvLSTM3D
 from m_package.models.GAN import GANModel, build_discriminator, build_generator_ver1, build_generator_ver2, ImageGenerationCallback, desicion_model
-from m_package.common.utils import plot_history, conf_matrix, GAN_plot, save_model
+from m_package.common.utils import plot_history, conf_matrix, GAN_plot, save_model, plot_history_metric_final, plot_history_loss_final, make_prediction
 from m_package.common.metrics_binary import metrics_per_fold_binary, resulting_binary, linear_per_fold
 
 
@@ -239,6 +239,7 @@ if __name__ == "__main__":
         print("Img dataset has been loaded")
     elif data_name == "_windowed" and run > 0:
         X_data, y_data = window_dataset_creation(n_steps, path, dataset_name_)
+        print(X_data.shape)
 
     #dataset creation
     if run == 0: 
@@ -397,6 +398,9 @@ if __name__ == "__main__":
             for key in best_hps.values:
                 print(key, best_hps[key])
             
+            train_loss, valid_loss = [], []
+            train_auc, valid_auc = [], []
+            y_true_arr, y_pred_arr = [], []
             for _ in range(5):
                 #creating the datasets
                 if type_name == "ind":
@@ -419,16 +423,30 @@ if __name__ == "__main__":
                 #build and train model on huge number of epochs
                 model = model_build_func(best_hps)
                 model.compile(optimizer=return_optimizer(best_hps), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
-                model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
+                history = model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
+                train_loss.append(history.history['loss'])
+                valid_loss.append(history.history['val_loss'])
+                history_keys = list(history.history.keys())
+                auc_str = history_keys[1]
+                auc_val_str = history_keys[-1]
+                train_auc.append(history.history[auc_str])
+                valid_auc.append(history.history[auc_val_str])
+                #make_prediction
+                y_pred, y_test =  make_prediction(model, test_dataset)
+                y_true_arr.append(y_test)
+                y_pred_arr.append(y_pred)
 
                 #calc metrics 
                 metrics_results = metrics_per_fold_binary(model, test_dataset, metrics_results)
 
+            print(history.history.keys())
+            plot_history_loss_final(train_loss, valid_loss, "Figures", f"{data_rep}_{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}_for_report")
+            plot_history_metric_final(train_auc, valid_auc, "Figures", f"{data_rep}_{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}_for_report")
             final_results = resulting_binary(metrics_results)
             print(f"RESULTS: for {proj_name}\n")
             print(final_results)
 
-            conf_matrix(model, test_dataset, f"model_{model_name_save}")
+            conf_matrix(y_pred_arr, y_true_arr, f"std_{model_name_save}")
 
     elif model_name == "gbc" or model_name == "rf" or model_name == "mlp":
         if model_name == "gbc":
@@ -578,6 +596,10 @@ if __name__ == "__main__":
                 "f1": []
             }
 
+            train_loss, valid_loss = [], []
+            train_auc, valid_auc = [], []
+            y_true_arr, y_pred_arr = [], []
+
             for _ in range(5):
                 train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
 
@@ -592,16 +614,30 @@ if __name__ == "__main__":
                     layer.trainable = False
 
                 model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
-                model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
+                history = model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
+                train_loss.append(history.history['loss'])
+                valid_loss.append(history.history['val_loss'])
+                history_keys = list(history.history.keys())
+                auc_str = history_keys[1]
+                auc_val_str = history_keys[-1]
+                train_auc.append(history.history[auc_str])
+                valid_auc.append(history.history[auc_val_str])
+                #make_prediction
+                y_pred, y_test =  make_prediction(model, test_dataset)
+                y_true_arr.append(y_test)
+                y_pred_arr.append(y_pred)
 
                 #calc metrics 
                 metrics_results = metrics_per_fold_binary(model, test_dataset, metrics_results)
 
             final_results = resulting_binary(metrics_results)
-            print(f"RESULTS: for {model_name}\n")
             print(final_results)
+            print(f"RESULTS: for {model_name}\n")
+            plot_history_loss_final(train_loss, valid_loss, "Figures", f"{data_rep}_{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}_for_report")
+            plot_history_metric_final(train_auc, valid_auc, "Figures", f"{data_rep}_{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}_for_report")
+            final_results = resulting_binary(metrics_results)
             model_name_save = f"{data_rep}_{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}"
-            conf_matrix(model, test_dataset, f"model_{model_name_save}")
+            conf_matrix(y_pred_arr, y_true_arr, f"std_{model_name_save}")
 
     if model_name == "sitted_basic" or model_name == "sitted_deep":
         if data_rep == "1D":
@@ -720,5 +756,6 @@ if __name__ == "__main__":
 
             path = "Figures"
             GAN_plot(hist, path, model_name_save_n)
+
 
 

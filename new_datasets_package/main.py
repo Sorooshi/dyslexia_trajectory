@@ -175,7 +175,7 @@ if __name__ == "__main__":
     batch_size = 16
     num_tune_epochs = 15 #50
     num_trials = 10 #20
-    num_points = 5
+    num_points = 3 #5
     path_tuner = "Hyper_params"
     n_steps = 10
 

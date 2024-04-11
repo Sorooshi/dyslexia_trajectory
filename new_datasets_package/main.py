@@ -173,8 +173,8 @@ if __name__ == "__main__":
 
     # constants 
     batch_size = 16
-    num_tune_epochs = 50
-    num_trials = 20
+    num_tune_epochs = 15 #50
+    num_trials = 10 #20
     num_points = 5
     path_tuner = "Hyper_params"
     n_steps = 10
@@ -354,7 +354,10 @@ if __name__ == "__main__":
             proj_name = f'{data_rep}{data_name}_{model_name}_lstm'
             #proj_name = f'{data_rep}{data_name}_{model_name}_conv'
         else:
-            proj_name = f'{data_rep}{data_name}_{model_name}_{type_name}'
+            if num_trials < 20:
+                proj_name = f'{data_rep}{data_name}_{model_name}_{type_name}_{num_trials}'
+            else:
+                proj_name = f'{data_rep}{data_name}_{model_name}_{type_name}'
         model_name_save = f"{data_rep}_{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}"
         if run == 1:
             train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)

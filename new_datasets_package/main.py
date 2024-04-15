@@ -4,6 +4,7 @@ from pathlib import Path
 import pickle
 
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 import keras
 from keras.layers import Dense, GlobalAveragePooling2D
@@ -173,9 +174,9 @@ if __name__ == "__main__":
 
     # constants 
     batch_size = 16
-    num_tune_epochs = 15 #50
-    num_trials = 10 #20
-    num_points = 3 #5
+    num_tune_epochs = 50
+    num_trials = 20
+    num_points = 5
     path_tuner = "Hyper_params"
     n_steps = 10
 
@@ -354,10 +355,7 @@ if __name__ == "__main__":
             proj_name = f'{data_rep}{data_name}_{model_name}_lstm'
             #proj_name = f'{data_rep}{data_name}_{model_name}_conv'
         else:
-            if num_trials < 20:
-                proj_name = f'{data_rep}{data_name}_{model_name}_{type_name}_{num_trials}'
-            else:
-                proj_name = f'{data_rep}{data_name}_{model_name}_{type_name}'
+            proj_name = f'{data_rep}{data_name}_{model_name}_{type_name}'
         model_name_save = f"{data_rep}_{epoch_num}{data_name}_{model_name}_{num_classes}_{type_name}"
         if run == 1:
             train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
@@ -404,23 +402,43 @@ if __name__ == "__main__":
             train_loss, valid_loss = [], []
             train_auc, valid_auc = [], []
             y_true_arr, y_pred_arr = [], []
-            for _ in range(5):
+            for i in range(5):
                 #creating the datasets
                 if type_name == "ind":
-                        X_train, X_val, y_train, y_val = train_test_split(X_data, y_data, test_size=0.35, stratify=y_data)
-                        print(X_train.shape)
+                    data = pd.read_csv(os.path.join(path, dataset_name_))
+                    data["ID"] = data["SubjectID"].str.split("_").str[0]
+                    df_gr = data.groupby("ID").mean(numeric_only=True).reset_index()
+                    df_gr["Group"] = df_gr["Group"].astype(dtype=int)
+                    X = df_gr["ID"].to_list()
+                    y = df_gr["Group"].to_list()
 
-                        train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
-                        train_dataset = train_dataset.batch(batch_size, drop_remainder=True)
+                    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y)
 
-                        val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
-                        val_dataset = val_dataset.batch(batch_size, drop_remainder=True)
-                        # test fom ind dataset
-                        X_test, y_test = window_dataset_creation(n_steps, path, "Independent_test.csv")
-                        print(X_test.shape)
-                        test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
-                        test_dataset = test_dataset.batch(batch_size, drop_remainder=True)
+                    data_train = data.loc[data["ID"].isin(X_train)].copy()
+                    data_test = data.loc[data["ID"].isin(X_test)].copy()
+                    data_test.drop(columns="SubjectID", inplace=True)
+                    data_test.rename(columns={"ID":"SubjectID"}, inplace=True)
 
+                    test_path = f"ind_test_{i}_split.csv"
+                    data_test.to_csv(os.path.join(path, test_path))
+
+                    X_test, y_test = window_dataset_creation(n_steps, path, test_path)
+
+                    test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
+                    test_dataset = test_dataset.batch(batch_size, drop_remainder=True)
+
+                    train_path = f"ind_test_train_{i}_split.csv"
+                    data_train.to_csv(os.path.join(path, train_path))
+
+                    X_data, y_data = window_dataset_creation(n_steps, path, train_path)
+                    X_train, X_val, y_train, y_val = train_test_split(X_data, y_data, test_size=0.35, stratify=y_data)
+
+                    train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
+                    train_dataset = train_dataset.shuffle(buffer_size=len(X_train)).batch(batch_size)
+
+                    val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
+                    val_dataset = val_dataset.batch(batch_size)
+                      
                 else:
                     train_dataset, val_dataset, test_dataset = split_data(X_data, y_data)
                 #build and train model on huge number of epochs
@@ -759,6 +777,7 @@ if __name__ == "__main__":
 
             path = "Figures"
             GAN_plot(hist, path, model_name_save_n)
+
 
 
 

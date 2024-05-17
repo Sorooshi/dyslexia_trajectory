@@ -20,7 +20,7 @@ from m_package.models.deep import lstm_1d_deep_logits
 from m_package.common.metrics_binary import resulting_binary, linear_per_fold
 
 # Global variables
-epoch_num = 1 #150 
+epoch_num = 150 
 n_steps = 10
 batch_size = 16
 dataset_name_ = "fused_data.csv"

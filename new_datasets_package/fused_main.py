@@ -10,10 +10,12 @@ import keras
 
 from sklearn.model_selection import KFold, train_test_split
 from skopt import BayesSearchCV
-from skopt.space import  Categorical
+from skopt.space import  *
 from sklearn.neural_network import MLPClassifier
+from pytorch_tabnet.tab_model import TabNetClassifier
 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.metrics import make_scorer, roc_auc_score
 
 from m_package.data.fused_creation import window_dataset_creation
 from m_package.models.deep import lstm_1d_deep_logits
@@ -64,7 +66,7 @@ if __name__ == "__main__":
         "--model_name", type=str, default="conv_grad",
         help="Model's name"
             "mlp for MLPClassifier"
-            
+            "tabnet for TabNet"
     )
 
     args = parser.parse_args()
@@ -101,7 +103,7 @@ if __name__ == "__main__":
 
     indices = np.arange(fix_data.shape[0])
     train_idx, cv_idx = train_test_split(indices, test_size=0.4)
-    train_lstm_idx, tune_mlp_idx = train_test_split(train_idx, test_size=0.5)
+    train_lstm_idx, tune_clf_idx = train_test_split(train_idx, test_size=0.5)
 
     #training LSTM with best hp
     X_data, y_data = fix_data[train_lstm_idx], fix_y_data[train_lstm_idx]
@@ -123,40 +125,55 @@ if __name__ == "__main__":
     model_lstm.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
 
     #tune mlp
-    X_data_mlp, y_train_mlp, age_mlp = fix_data[tune_mlp_idx], fix_y_data[tune_mlp_idx], age[tune_mlp_idx]
+    X_data_clf, y_train_clf, age_clf = fix_data[tune_clf_idx], fix_y_data[tune_clf_idx], age[tune_clf_idx]
     scaler_s, scaler_m = StandardScaler(),  MinMaxScaler()
 
-    X_data_mlp_pred = scaler_s.fit_transform(model_lstm.predict(X_data_mlp))
-    age_mlp_sc = scaler_m.fit_transform(age_mlp)
+    X_data_clf_pred = scaler_s.fit_transform(model_lstm.predict(X_data_clf))
+    age_clf_sc = scaler_m.fit_transform(age_clf)
 
-    X_train_mlp = np.hstack((X_data_mlp_pred, age_mlp_sc))
+    X_train_clf = np.hstack((X_data_clf_pred, age_clf_sc))
 
-    param_space = {
-            "activation": Categorical(["logistic", "tanh", "relu"]),
-            "solver": Categorical(["lbfgs", "sgd", "adam"]),
-            "learning_rate": Categorical(["constant", "invscaling", "adaptive"])
-            }
-    model_mlp = MLPClassifier()
+    if model_name == "mlp":
+        param_space = {
+                "activation": Categorical(["logistic", "tanh", "relu"]),
+                "solver": Categorical(["lbfgs", "sgd", "adam"]),
+                "learning_rate": Categorical(["constant", "invscaling", "adaptive"])
+                }
+        model_clf = MLPClassifier()
+    elif model_name == "tabnet":
+        param_space = {
+            'n_d': Integer(8, 64),
+            'n_a': Integer(8, 64),
+            'n_steps': Integer(3, 10),
+            'gamma': Real(1.0, 2.0),
+            'lambda_sparse': Real(1e-6, 1e-3, prior='log-uniform'),
+            'mask_type': Categorical(['sparsemax', 'entmax']),
+            'n_shared': Integer(1, 5),
+            'momentum': Real(0.01, 0.4)
+        }
+        model_clf = TabNetClassifier()
+
 
     print("Tuning has begun")
-    bayes_search = BayesSearchCV(model_mlp, param_space, n_iter=100, cv=5, n_jobs=5)
+    bayes_search = BayesSearchCV(model_clf, param_space, n_iter=100, cv=5, n_jobs=5, scoring=make_scorer(roc_auc_score))
 
     np.int = int
-    bayes_search.fit(X_train_mlp , np.argmax(y_train_mlp, axis=1))
+    bayes_search.fit(X_train_clf , np.argmax(y_train_clf, axis=1))
 
     best_estimator = bayes_search.best_estimator_
     best_params = bayes_search.best_params_
+
     print(f"Best parameters found:")
     print(best_params)
 
     #5cv
 
     metrics_results = {
-                "auc_roc" : [],
-                "accuracy" : [],
-                "precision": [],
-                "recall": [],
-                "f1": []
+            "auc_roc" : [],
+            "accuracy" : [],
+            "precision": [],
+            "recall": [],
+            "f1": []
             }
     
 
@@ -164,17 +181,17 @@ if __name__ == "__main__":
     X_cv_mlp, y_val_mlp, age_cv_mlp = fix_data[cv_idx], fix_y_data[cv_idx], age[cv_idx]
 
     scaler_s, scaler_m = StandardScaler(),  MinMaxScaler()
-    X_data_mlp_pred = scaler_s.fit_transform(model_lstm.predict(X_cv_mlp))
+    X_data_clf_pred = scaler_s.fit_transform(model_lstm.predict(X_cv_mlp))
     age_mlp_sc_cv = scaler_m.fit_transform(age_cv_mlp)
 
-    X_val_mlp = np.hstack((X_data_mlp_pred, age_mlp_sc_cv))
+    X_val_mlp = np.hstack((X_data_clf_pred, age_mlp_sc_cv))
 
-    kf = KFold(n_splits=5)
+    kf = KFold(n_splits=2)
     for train_index , test_index in kf.split(X_val_mlp):
         X_train , X_test = X_val_mlp[train_index], X_val_mlp[test_index]
         y_train , y_test = np.argmax(y_val_mlp[train_index], axis=1),np.argmax(y_val_mlp[test_index], axis=1)
 
-        model_best = model_mlp.set_params(**best_params)
+        model_best = model_clf.set_params(**best_params)
         model_best.fit(X_train,y_train)
         pred_values = model_best.predict(X_test)
         pred_proba = model_best.predict_proba(X_test)[:, 1]
@@ -182,4 +199,3 @@ if __name__ == "__main__":
 
     final_results = resulting_binary(metrics_results)
     print(final_results)
-

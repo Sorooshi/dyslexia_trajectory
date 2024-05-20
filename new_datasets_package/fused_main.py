@@ -6,6 +6,8 @@ import pickle
 import numpy as np
 import tensorflow as tf
 import keras
+from keras_tuner.tuners import BayesianOptimization
+import keras_tuner as kt
 
 
 from sklearn.model_selection import KFold, train_test_split
@@ -17,9 +19,12 @@ from pytorch_tabnet.tab_model import TabNetClassifier
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.metrics import make_scorer, roc_auc_score
 
-from m_package.data.fused_creation import window_dataset_creation
-from m_package.models.deep import lstm_1d_deep_logits
-from m_package.common.metrics_binary import resulting_binary, linear_per_fold
+from m_package.data.fused_creation import window_dataset_creation, window_dataset_creation_fused
+from m_package.models.deep import lstm_1d_deep, lstm_1d_deep_fused
+from m_package.common.metrics_binary import metrics_per_fold_binary, resulting_binary, linear_per_fold
+from m_package.common.utils import plot_history, make_prediction, conf_matrix, plot_history_metric_final, plot_history_loss_final
+
+
 
 # Global variables
 epoch_num = 150 
@@ -27,6 +32,9 @@ n_steps = 10
 batch_size = 16
 dataset_name_ = "fused_data.csv"
 hp_name = "1D_windowed_deep_lstm.txt"
+num_tune_epochs = 50
+num_trials = 20
+num_points = 5
 
 def args_parser(arguments):
     
@@ -50,6 +58,23 @@ def return_optimizer(best_hps):
     return optimizer
 
 
+def split_data(X, y):
+    # Multi-class labels: 0 -> norm; 1 -> risk; 2-> dyslexia
+    # Binary labels: 0 -> norm; 1 -> dyslexia
+    X_train, X_valt, y_train, y_valt = train_test_split(X, y, test_size=0.35, stratify=y)
+    X_val, X_test, y_val, y_test = train_test_split(X_valt, y_valt, test_size=0.5, stratify=y_valt)
+
+    train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
+    train_dataset = train_dataset.shuffle(buffer_size=len(X_train)).batch(batch_size)
+
+    val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
+    val_dataset = val_dataset.batch(batch_size)
+
+    test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
+    test_dataset = test_dataset.batch(batch_size, drop_remainder=True)
+
+    return train_dataset, val_dataset, test_dataset
+
 
 if __name__ == "__main__":
 
@@ -67,6 +92,7 @@ if __name__ == "__main__":
         help="Model's name"
             "mlp for MLPClassifier"
             "tabnet for TabNet"
+            "lstm for LSTM model"
     )
 
     args = parser.parse_args()
@@ -99,103 +125,180 @@ if __name__ == "__main__":
     path = Path("Datasets")
     path_tuner = Path("Hyper_params")
 
-    fix_data, fix_y_data, age = window_dataset_creation(n_steps, path, dataset_name_) #sentences are not separated
+    if model_name == "lstm":
+        fix_data, fix_y_data = window_dataset_creation_fused(n_steps, path, dataset_name_) 
+        proj_name = "fused_lstm"
+        if run == 1:
+            train_dataset, val_dataset, test_dataset = split_data(fix_data, fix_y_data)
+            tuner = BayesianOptimization(
+                lstm_1d_deep_fused,
+                objective=kt.Objective('val_auc', direction='max'),
+                max_trials=num_trials,
+                num_initial_points=num_points,
+                overwrite=True,
+                directory='tuning_dir',
+                project_name=proj_name)
+            
+            tuner.search(train_dataset, epochs=num_tune_epochs, validation_data=val_dataset)
 
-    indices = np.arange(fix_data.shape[0])
-    train_idx, cv_idx = train_test_split(indices, test_size=0.4)
-    train_lstm_idx, tune_clf_idx = train_test_split(train_idx, test_size=0.5)
+            best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
+            best_model = lstm_1d_deep_fused(best_hps)
 
-    #training LSTM with best hp
-    X_data, y_data = fix_data[train_lstm_idx], fix_y_data[train_lstm_idx]
-    X_train, X_val, y_train, y_val = train_test_split(X_data, y_data, test_size=0.2, stratify=y_data)
+            with open(os.path.join(path_tuner, proj_name + '.txt'),'wb') as f:
+                pickle.dump(best_hps, f)
 
-    train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
-    train_dataset = train_dataset.shuffle(buffer_size=len(X_train)).batch(batch_size)
-
-    val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
-    val_dataset = val_dataset.batch(batch_size)
-
-
-
-    with open(os.path.join(path_tuner, hp_name),'rb') as f:
-        best_hps = pickle.load(f)
-    
-    model_lstm = lstm_1d_deep_logits(best_hps)
-    model_lstm.compile(optimizer=return_optimizer(best_hps), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
-    model_lstm.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
-
-    #tune mlp
-    X_data_clf, y_train_clf, age_clf = fix_data[tune_clf_idx], fix_y_data[tune_clf_idx], age[tune_clf_idx]
-    scaler_s, scaler_m = StandardScaler(),  MinMaxScaler()
-
-    X_data_clf_pred = scaler_s.fit_transform(model_lstm.predict(X_data_clf))
-    age_clf_sc = scaler_m.fit_transform(age_clf)
-
-    X_train_clf = np.hstack((X_data_clf_pred, age_clf_sc))
-
-    if model_name == "mlp":
-        param_space = {
-                "activation": Categorical(["logistic", "tanh", "relu"]),
-                "solver": Categorical(["lbfgs", "sgd", "adam"]),
-                "learning_rate": Categorical(["constant", "invscaling", "adaptive"])
+            #tune num of epochs
+            train_dataset, val_dataset, test_dataset = split_data(fix_data, fix_y_data)
+            best_model.compile(optimizer=return_optimizer(best_hps), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+            history = best_model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
+            
+            path = "Figures"
+            plot_history(history.history['loss'], history.history['val_auc'], history.history['auc'], path, proj_name, history.history['val_loss'])
+        elif run == 2:
+            metrics_results = {
+                "auc_roc" : [],
+                "accuracy" : [],
+                "precision": [],
+                "recall": [],
+                "f1": []
                 }
-        model_clf = MLPClassifier()
-    elif model_name == "tabnet":
-        param_space = {
-            'n_d': Integer(8, 64),
-            'n_a': Integer(8, 64),
-            'n_steps': Integer(3, 10),
-            'gamma': Real(1.0, 2.0),
-            'lambda_sparse': Real(1e-6, 1e-3, prior='log-uniform'),
-            'mask_type': Categorical(['sparsemax', 'entmax']),
-            'n_shared': Integer(1, 5),
-            'momentum': Real(0.01, 0.4)
-        }
-        model_clf = TabNetClassifier()
+
+            with open(os.path.join(path_tuner, proj_name + '.txt'),'rb') as f:
+                best_hps = pickle.load(f)
+
+            for key in best_hps.values:
+                print(key, best_hps[key])
+            
+            train_loss, valid_loss = [], []
+            train_auc, valid_auc = [], []
+            y_true_arr, y_pred_arr = [], []
+            for i in range(5):
+                train_dataset, val_dataset, test_dataset = split_data(fix_data, fix_y_data)
+                model = lstm_1d_deep_fused(best_hps)
+                model.compile(optimizer=return_optimizer(best_hps), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+                history = model.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
+                train_loss.append(history.history['loss'])
+                valid_loss.append(history.history['val_loss'])
+                history_keys = list(history.history.keys())
+                auc_str = history_keys[1]
+                auc_val_str = history_keys[-1]
+                train_auc.append(history.history[auc_str])
+                valid_auc.append(history.history[auc_val_str])
+                #make_prediction
+                y_pred, y_test = make_prediction(model, test_dataset)
+                y_true_arr.append(y_test)
+                y_pred_arr.append(y_pred)
+
+                #calc metrics 
+                metrics_results = metrics_per_fold_binary(model, test_dataset, metrics_results)
+
+            print(history.history.keys())
+            plot_history_loss_final(train_loss, valid_loss, "Figures", proj_name)
+            plot_history_metric_final(train_auc, valid_auc, "Figures", proj_name)
+            final_results = resulting_binary(metrics_results)
+            print(f"RESULTS: for {proj_name}\n")
+            print(final_results)
+
+            conf_matrix(y_pred_arr, y_true_arr, f"std_{proj_name}")
+    else:
+        #run 1 tune mlp and train lstm
+        fix_data, fix_y_data, age = window_dataset_creation(n_steps, path, dataset_name_) 
+        indices = np.arange(fix_data.shape[0])
+        train_idx, val_idx = train_test_split(indices, test_size=0.2)
+
+        X_train, y_train, age_t = fix_data[train_idx], fix_y_data[train_idx], age[train_idx]
+        X_val, y_val = fix_data[val_idx], fix_y_data[val_idx]
+        scaler_m = MinMaxScaler() 
+        age_t = scaler_m.fit_transform(age_t)
+
+        train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
+        train_dataset = train_dataset.shuffle(buffer_size=len(X_train)).batch(batch_size)
+
+        val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
+        val_dataset = val_dataset.batch(batch_size)
+
+        with open(os.path.join(path_tuner, hp_name),'rb') as f:
+            best_hps = pickle.load(f)
+    
+        model_lstm = lstm_1d_deep(best_hps)
+        model_lstm.compile(optimizer=return_optimizer(best_hps), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+        model_lstm.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
+
+        X_data = np.hstack((model_lstm.predict(X_train), age_t))
+
+        if model_name == "mlp":
+            param_space = {
+                    "activation": Categorical(["logistic", "tanh", "relu"]),
+                    "solver": Categorical(["lbfgs", "sgd", "adam"]),
+                    "learning_rate": Categorical(["constant", "invscaling", "adaptive"])
+                    }
+            model_clf = MLPClassifier()
+        
+        elif model_name == "tabnet":
+            param_space = {
+                    'n_d': Integer(8, 64),
+                    'n_a': Integer(8, 64),
+                    'n_steps': Integer(3, 10),
+                    'gamma': Real(1.0, 2.0),
+                    'lambda_sparse': Real(1e-6, 1e-3, prior='log-uniform'),
+                    'mask_type': Categorical(['sparsemax', 'entmax']),
+                    'n_shared': Integer(1, 5),
+                    'momentum': Real(0.01, 0.4)
+            }
+            model_clf = TabNetClassifier()
 
 
-    print("Tuning has begun")
-    bayes_search = BayesSearchCV(model_clf, param_space, n_iter=100, cv=5, n_jobs=5, scoring=make_scorer(roc_auc_score))
+        print("Tuning has begun")
+        bayes_search = BayesSearchCV(model_clf, param_space, n_iter=100, cv=5, n_jobs=5, scoring=make_scorer(roc_auc_score))
 
-    np.int = int
-    bayes_search.fit(X_train_clf , np.argmax(y_train_clf, axis=1))
+        np.int = int
+        bayes_search.fit(X_data , np.argmax(y_train, axis=1))
 
-    best_estimator = bayes_search.best_estimator_
-    best_params = bayes_search.best_params_
+        best_estimator = bayes_search.best_estimator_
+        best_params = bayes_search.best_params_
 
-    print(f"Best parameters found:")
-    print(best_params)
+        print(f"Best parameters found:")
+        print(best_params)
 
-    #5cv
+        # run 2 => 5 cv
 
-    metrics_results = {
+        metrics_results = {
             "auc_roc" : [],
             "accuracy" : [],
             "precision": [],
             "recall": [],
             "f1": []
             }
+        
+
+        for i in range(5):
+            train_idx, val_idx = train_test_split(indices, test_size=0.35)
+            val_idx, test_idx = train_test_split(indices, test_size=0.5)
+
+            X_train, y_train, age_t = fix_data[train_idx], fix_y_data[train_idx], age[train_idx]
+            age_t = scaler_m.transform(age_t)
+            X_val, y_val = fix_data[val_idx], fix_y_data[val_idx]
+            X_test, y_test, age_test = fix_data[test_idx], np.argmax(fix_y_data[test_idx], axis=1), age[test_idx]
+            age_test = scaler_m.transform(age_test)
+            #retrain lstm and mlp
+            train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
+            train_dataset = train_dataset.shuffle(buffer_size=len(X_train)).batch(batch_size)
+
+            val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
+            val_dataset = val_dataset.batch(batch_size)
     
+            model_lstm = lstm_1d_deep(best_hps)
+            model_lstm.compile(optimizer=return_optimizer(best_hps), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+            model_lstm.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
 
+            X_train_data = np.hstack((model_lstm.predict(X_train), age_t))
+            X_test_data = np.hstack((model_lstm.predict(X_test), age_test))
 
-    X_cv_mlp, y_val_mlp, age_cv_mlp = fix_data[cv_idx], fix_y_data[cv_idx], age[cv_idx]
-
-    scaler_s, scaler_m = StandardScaler(),  MinMaxScaler()
-    X_data_clf_pred = scaler_s.fit_transform(model_lstm.predict(X_cv_mlp))
-    age_mlp_sc_cv = scaler_m.fit_transform(age_cv_mlp)
-
-    X_val_mlp = np.hstack((X_data_clf_pred, age_mlp_sc_cv))
-
-    kf = KFold(n_splits=2)
-    for train_index , test_index in kf.split(X_val_mlp):
-        X_train , X_test = X_val_mlp[train_index], X_val_mlp[test_index]
-        y_train , y_test = np.argmax(y_val_mlp[train_index], axis=1),np.argmax(y_val_mlp[test_index], axis=1)
-
-        model_best = model_clf.set_params(**best_params)
-        model_best.fit(X_train,y_train)
-        pred_values = model_best.predict(X_test)
-        pred_proba = model_best.predict_proba(X_test)[:, 1]
-        metrics_results = linear_per_fold(y_test, pred_proba, pred_values, metrics_results)
-
-    final_results = resulting_binary(metrics_results)
-    print(final_results)
+            model_best = model_clf.set_params(**best_params)
+            model_best.fit(X_train_data, np.argmax(y_train, axis=1))
+            pred_values = model_best.predict(X_test_data)
+            pred_proba = model_best.predict_proba(X_test_data)[:, 1]
+            metrics_results = linear_per_fold(y_test, pred_proba, pred_values, metrics_results)
+        
+        final_results = resulting_binary(metrics_results)
+        print(final_results)

@@ -2,10 +2,10 @@ import tensorflow as tf
 import keras
 from keras.layers import *
 
-def lstm_1d_deep_logits(hp):
+def lstm_1d_deep_fused(hp):
     model = keras.Sequential()
     model.add(LSTM(units=hp.Int('lstm1_units', min_value=16, max_value=64, step=16), 
-                   return_sequences=True, input_shape=(10, 3)))
+                   return_sequences=True, input_shape=(10, 4)))
     model.add(BatchNormalization())
 
     model.add(LSTM(units=hp.Int('lstm2_units', min_value=32, max_value=128, step=32), return_sequences=True)) 
@@ -21,7 +21,7 @@ def lstm_1d_deep_logits(hp):
     model.add(Dropout(hp.Float('dropout_1', min_value=0.1, max_value=0.5, step=0.1)))
     model.add(Dense(hp.Int('dense_units_2', min_value=32, max_value=128, step=32), activation='relu'))
     model.add(Dropout(hp.Float('dropout_2', min_value=0.1, max_value=0.5, step=0.1)))
-    model.add(Dense(2))
+    model.add(Dense(2, activation='sigmoid'))
 
     learning_rate = hp.Float("lr", min_value=1e-5, max_value=1e-2, sampling="log")
     

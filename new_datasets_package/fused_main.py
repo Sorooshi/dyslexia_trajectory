@@ -15,6 +15,8 @@ from skopt import BayesSearchCV
 from skopt.space import  *
 from sklearn.neural_network import MLPClassifier
 from pytorch_tabnet.tab_model import TabNetClassifier
+import torch
+from collections import OrderedDict
 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.metrics import make_scorer, roc_auc_score
@@ -201,104 +203,173 @@ if __name__ == "__main__":
 
             conf_matrix(y_pred_arr, y_true_arr, f"std_{proj_name}")
     else:
-        #run 1 tune mlp and train lstm
-        fix_data, fix_y_data, age = window_dataset_creation(n_steps, path, dataset_name_) 
-        indices = np.arange(fix_data.shape[0])
-        train_idx, val_idx = train_test_split(indices, test_size=0.2)
-
-        X_train, y_train, age_t = fix_data[train_idx], fix_y_data[train_idx], age[train_idx]
-        X_val, y_val = fix_data[val_idx], fix_y_data[val_idx]
-        scaler_m = MinMaxScaler() 
-        age_t = scaler_m.fit_transform(age_t)
-
-        train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
-        train_dataset = train_dataset.shuffle(buffer_size=len(X_train)).batch(batch_size)
-
-        val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
-        val_dataset = val_dataset.batch(batch_size)
-
-        with open(os.path.join(path_tuner, hp_name),'rb') as f:
-            best_hps = pickle.load(f)
-    
-        model_lstm = lstm_1d_deep(best_hps)
-        model_lstm.compile(optimizer=return_optimizer(best_hps), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
-        model_lstm.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
-
-        X_data = np.hstack((model_lstm.predict(X_train), age_t))
-
-        if model_name == "mlp":
-            param_space = {
-                    "activation": Categorical(["logistic", "tanh", "relu"]),
-                    "solver": Categorical(["lbfgs", "sgd", "adam"]),
-                    "learning_rate": Categorical(["constant", "invscaling", "adaptive"])
-                    }
-            model_clf = MLPClassifier()
-        
-        elif model_name == "tabnet":
-            param_space = {
-                    'n_d': Integer(8, 64),
-                    'n_a': Integer(8, 64),
-                    'n_steps': Integer(3, 10),
-                    'gamma': Real(1.0, 2.0),
-                    'lambda_sparse': Real(1e-6, 1e-3, prior='log-uniform'),
-                    'mask_type': Categorical(['sparsemax', 'entmax']),
-                    'n_shared': Integer(1, 5),
-                    'momentum': Real(0.01, 0.4)
-            }
-            model_clf = TabNetClassifier()
-
-
-        print("Tuning has begun")
-        bayes_search = BayesSearchCV(model_clf, param_space, n_iter=100, cv=5, n_jobs=5, scoring=make_scorer(roc_auc_score))
-
-        np.int = int
-        bayes_search.fit(X_data , np.argmax(y_train, axis=1))
-
-        best_estimator = bayes_search.best_estimator_
-        best_params = bayes_search.best_params_
-
-        print(f"Best parameters found:")
-        print(best_params)
-
-        # run 2 => 5 cv
-
-        metrics_results = {
-            "auc_roc" : [],
-            "accuracy" : [],
-            "precision": [],
-            "recall": [],
-            "f1": []
-            }
-        
-
-        for i in range(5):
+        if run == 1:
+            #run 1 tune mlp and train lstm
+            fix_data, fix_y_data, age = window_dataset_creation(n_steps, path, dataset_name_) 
+            indices = np.arange(fix_data.shape[0])
             train_idx, val_idx = train_test_split(indices, test_size=0.35)
-            val_idx, test_idx = train_test_split(indices, test_size=0.5)
 
             X_train, y_train, age_t = fix_data[train_idx], fix_y_data[train_idx], age[train_idx]
-            age_t = scaler_m.transform(age_t)
             X_val, y_val = fix_data[val_idx], fix_y_data[val_idx]
-            X_test, y_test, age_test = fix_data[test_idx], np.argmax(fix_y_data[test_idx], axis=1), age[test_idx]
-            age_test = scaler_m.transform(age_test)
-            #retrain lstm and mlp
+            scaler_m = MinMaxScaler() 
+            age_t = scaler_m.fit_transform(age_t)
+
             train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
             train_dataset = train_dataset.shuffle(buffer_size=len(X_train)).batch(batch_size)
 
             val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
             val_dataset = val_dataset.batch(batch_size)
+
+            with open(os.path.join(path_tuner, hp_name),'rb') as f:
+                best_hps = pickle.load(f)
     
             model_lstm = lstm_1d_deep(best_hps)
             model_lstm.compile(optimizer=return_optimizer(best_hps), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
             model_lstm.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
 
-            X_train_data = np.hstack((model_lstm.predict(X_train), age_t))
-            X_test_data = np.hstack((model_lstm.predict(X_test), age_test))
+            X_data = np.hstack((model_lstm.predict(X_train), age_t))
 
-            model_best = model_clf.set_params(**best_params)
-            model_best.fit(X_train_data, np.argmax(y_train, axis=1))
-            pred_values = model_best.predict(X_test_data)
-            pred_proba = model_best.predict_proba(X_test_data)[:, 1]
-            metrics_results = linear_per_fold(y_test, pred_proba, pred_values, metrics_results)
+            if model_name == "mlp":
+                param_space = {
+                        "activation": Categorical(["logistic", "tanh", "relu"]),
+                        "solver": Categorical(["lbfgs", "sgd", "adam"]),
+                        "learning_rate": Categorical(["constant", "invscaling", "adaptive"])
+                        }
+                model_clf = MLPClassifier()
         
-        final_results = resulting_binary(metrics_results)
-        print(final_results)
+            elif model_name == "tabnet":
+                DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+                print("Using {}".format(DEVICE))
+
+                param_space = {
+                        'n_d': Integer(8, 64),
+                        'n_a': Integer(8, 64),
+                        'n_steps': Integer(3, 10),
+                        'gamma': Real(1.0, 2.0),
+                        'lambda_sparse': Real(1e-6, 1e-3, prior='log-uniform'),
+                        'mask_type': Categorical(['sparsemax', 'entmax']),
+                        'n_shared': Integer(1, 5),
+                        'momentum': Real(0.01, 0.4)
+                        #'device_name': [DEVICE]
+                }
+                model_clf = TabNetClassifier(device_name=DEVICE)
+
+
+            print("Tuning has begun")
+            bayes_search = BayesSearchCV(model_clf, param_space, n_iter=100, cv=5, n_jobs=5, scoring=make_scorer(roc_auc_score))
+
+            np.int = int
+            bayes_search.fit(X_data , np.argmax(y_train, axis=1))
+
+            best_estimator = bayes_search.best_estimator_
+            best_params = bayes_search.best_params_
+
+            print(f"Best parameters found:")
+            print(best_params)
+
+            # run 2 => 5 cv
+
+            metrics_results = {
+                "auc_roc" : [],
+                "accuracy" : [],
+                "precision": [],
+                "recall": [],
+                "f1": []
+                }
+        
+            y_true_arr, y_pred_arr = [], []
+            for i in range(1):
+                train_idx, val_idx = train_test_split(indices, test_size=0.35)
+                val_idx, test_idx = train_test_split(indices, test_size=0.5)
+
+                X_train, y_train, age_t = fix_data[train_idx], fix_y_data[train_idx], age[train_idx]
+                age_t = scaler_m.transform(age_t)
+                X_val, y_val = fix_data[val_idx], fix_y_data[val_idx]
+                X_test, y_test, age_test = fix_data[test_idx], np.argmax(fix_y_data[test_idx], axis=1), age[test_idx]
+                age_test = scaler_m.transform(age_test)
+                #retrain lstm and mlp
+                train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
+                train_dataset = train_dataset.shuffle(buffer_size=len(X_train)).batch(batch_size)
+
+                val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
+                val_dataset = val_dataset.batch(batch_size)
+    
+                model_lstm = lstm_1d_deep(best_hps)
+                model_lstm.compile(optimizer=return_optimizer(best_hps), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+                model_lstm.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
+
+                X_train_data = np.hstack((model_lstm.predict(X_train), age_t))
+                X_test_data = np.hstack((model_lstm.predict(X_test), age_test))
+
+                model_best = model_clf.set_params(**best_params)
+                model_best.fit(X_train_data, np.argmax(y_train, axis=1))
+                pred_values = model_best.predict(X_test_data)
+                pred_proba = model_best.predict_proba(X_test_data)[:, 1]
+                y_true_arr.append(y_test)
+                y_pred_arr.append(pred_values)
+                metrics_results = linear_per_fold(y_test, pred_proba, pred_values, metrics_results)
+        
+            final_results = resulting_binary(metrics_results)
+            print(final_results)
+            conf_matrix(y_pred_arr, y_true_arr, f"std_{model_name}_linear_run={run}")
+
+        elif run == 2 and model_name == "mlp":
+            fix_data, fix_y_data, age = window_dataset_creation(n_steps, path, dataset_name_) 
+            indices = np.arange(fix_data.shape[0])
+            scaler_m = MinMaxScaler() 
+
+            with open(os.path.join(path_tuner, hp_name),'rb') as f:
+                best_hps = pickle.load(f)
+
+            best_params = OrderedDict([('activation', 'relu'), ('learning_rate', 'constant'), ('solver', 'lbfgs')])
+
+            print(f"Best parameters found:")
+            print(best_params)
+
+            model_clf = MLPClassifier()
+
+            metrics_results = {
+                "auc_roc" : [],
+                "accuracy" : [],
+                "precision": [],
+                "recall": [],
+                "f1": []
+                }
+            
+            y_true_arr, y_pred_arr = [], []
+
+
+            for i in range(5):
+                train_idx, val_idx = train_test_split(indices, test_size=0.35)
+                val_idx, test_idx = train_test_split(indices, test_size=0.5)
+
+                X_train, y_train, age_t = fix_data[train_idx], fix_y_data[train_idx], age[train_idx]
+                age_t = scaler_m.fit_transform(age_t)
+                X_val, y_val = fix_data[val_idx], fix_y_data[val_idx]
+                X_test, y_test, age_test = fix_data[test_idx], np.argmax(fix_y_data[test_idx], axis=1), age[test_idx]
+                age_test = scaler_m.transform(age_test)
+                #retrain lstm and mlp
+                train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
+                train_dataset = train_dataset.shuffle(buffer_size=len(X_train)).batch(batch_size)
+
+                val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
+                val_dataset = val_dataset.batch(batch_size)
+    
+                model_lstm = lstm_1d_deep(best_hps)
+                model_lstm.compile(optimizer=return_optimizer(best_hps), loss="binary_crossentropy", metrics=tf.keras.metrics.AUC())
+                model_lstm.fit(train_dataset, validation_data=(val_dataset), epochs=epoch_num)
+
+                X_train_data = np.hstack((model_lstm.predict(X_train), age_t))
+                X_test_data = np.hstack((model_lstm.predict(X_test), age_test))
+
+                model_best = model_clf.set_params(**best_params)
+                model_best.fit(X_train_data, np.argmax(y_train, axis=1))
+                pred_values = model_best.predict(X_test_data)
+                pred_proba = model_best.predict_proba(X_test_data)[:, 1]
+                y_true_arr.append(y_test)
+                y_pred_arr.append(pred_values)
+                metrics_results = linear_per_fold(y_test, pred_proba, pred_values, metrics_results)
+        
+            final_results = resulting_binary(metrics_results)
+            print(final_results)
+            conf_matrix(y_pred_arr, y_true_arr, f"std_{model_name}_linear")

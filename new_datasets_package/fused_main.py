@@ -256,7 +256,7 @@ if __name__ == "__main__":
 
 
             print("Tuning has begun")
-            bayes_search = BayesSearchCV(model_clf, param_space, n_iter=100, cv=5, n_jobs=5, scoring=make_scorer(roc_auc_score))
+            bayes_search = BayesSearchCV(model_clf, param_space, n_iter=12, cv=5, n_jobs=5, scoring=make_scorer(roc_auc_score))
 
             np.int = int
             bayes_search.fit(X_data , np.argmax(y_train, axis=1))
@@ -278,7 +278,7 @@ if __name__ == "__main__":
                 }
         
             y_true_arr, y_pred_arr = [], []
-            for i in range(1):
+            for i in range(5):
                 train_idx, val_idx = train_test_split(indices, test_size=0.35)
                 val_idx, test_idx = train_test_split(indices, test_size=0.5)
 

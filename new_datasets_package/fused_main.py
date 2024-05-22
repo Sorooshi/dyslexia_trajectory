@@ -29,7 +29,7 @@ from m_package.common.utils import plot_history, make_prediction, conf_matrix, p
 
 
 # Global variables
-epoch_num = 150 
+epoch_num = 1 #150 
 n_steps = 10
 batch_size = 16
 dataset_name_ = "fused_data.csv"
@@ -95,6 +95,7 @@ if __name__ == "__main__":
             "mlp for MLPClassifier"
             "tabnet for TabNet"
             "lstm for LSTM model"
+            "cond for conditional LSTM"
     )
 
     args = parser.parse_args()
@@ -202,7 +203,7 @@ if __name__ == "__main__":
             print(final_results)
 
             conf_matrix(y_pred_arr, y_true_arr, f"std_{proj_name}")
-    else:
+    elif model_name == "mlp" or model_name == "tabnet":
         if run == 1:
             #run 1 tune mlp and train lstm
             fix_data, fix_y_data, age = window_dataset_creation(n_steps, path, dataset_name_) 
@@ -236,10 +237,20 @@ if __name__ == "__main__":
                         "learning_rate": Categorical(["constant", "invscaling", "adaptive"])
                         }
                 model_clf = MLPClassifier()
+
+                print("Tuning has begun")
+                bayes_search = BayesSearchCV(model_clf, param_space, n_iter=100, cv=5, n_jobs=5, scoring=make_scorer(roc_auc_score))
+
+                np.int = int
+                bayes_search.fit(X_data , np.argmax(y_train, axis=1))
+
+                best_estimator = bayes_search.best_estimator_
+                best_params = bayes_search.best_params_
+
+                print(f"Best parameters found:")
+                print(best_params)
         
             elif model_name == "tabnet":
-                DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-                print("Using {}".format(DEVICE))
 
                 param_space = {
                         'n_d': Integer(8, 64),
@@ -254,19 +265,6 @@ if __name__ == "__main__":
                 }
                 model_clf = TabNetClassifier()
 
-
-            print("Tuning has begun")
-            bayes_search = BayesSearchCV(model_clf, param_space, n_iter=5, cv=5, n_jobs=5, scoring=make_scorer(roc_auc_score))
-
-            np.int = int
-            bayes_search.fit(X_data , np.argmax(y_train, axis=1))
-
-            best_estimator = bayes_search.best_estimator_
-            best_params = bayes_search.best_params_
-
-            print(f"Best parameters found:")
-            print(best_params)
-
             # run 2 => 5 cv
 
             metrics_results = {
@@ -278,7 +276,7 @@ if __name__ == "__main__":
                 }
         
             y_true_arr, y_pred_arr = [], []
-            for i in range(5):
+            for i in range(1):
                 train_idx, val_idx = train_test_split(indices, test_size=0.35)
                 val_idx, test_idx = train_test_split(indices, test_size=0.5)
 
@@ -301,7 +299,10 @@ if __name__ == "__main__":
                 X_train_data = np.hstack((model_lstm.predict(X_train), age_t))
                 X_test_data = np.hstack((model_lstm.predict(X_test), age_test))
 
-                model_best = model_clf.set_params(**best_params)
+                if model_name == "mlp":
+                    model_best = model_clf.set_params(**best_params)
+                else:
+                    model_best = TabNetClassifier()
                 model_best.fit(X_train_data, np.argmax(y_train, axis=1))
                 pred_values = model_best.predict(X_test_data)
                 pred_proba = model_best.predict_proba(X_test_data)[:, 1]
@@ -339,7 +340,7 @@ if __name__ == "__main__":
             y_true_arr, y_pred_arr = [], []
 
 
-            for i in range(5):
+            for i in range(2):
                 train_idx, val_idx = train_test_split(indices, test_size=0.35)
                 val_idx, test_idx = train_test_split(indices, test_size=0.5)
 
@@ -373,3 +374,6 @@ if __name__ == "__main__":
             final_results = resulting_binary(metrics_results)
             print(final_results)
             conf_matrix(y_pred_arr, y_true_arr, f"std_{model_name}_linear")
+
+    elif model_name == "cond":
+        pass
